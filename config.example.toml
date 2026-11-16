@@ -48,6 +48,8 @@ speech_captions = true  # word-by-word captions of what the streamer says (local
 whisper_model = "small" # "base" is faster, "medium" more accurate
 ai_captions = true      # Claude watches the clip and writes the hook + reaction captions
                         # (needs ANTHROPIC_API_KEY; falls back to chat-based captions without it)
+ai_model = "claude-opus-5-5"   # best captions, ~3-5 cents per clip
+                               # cheaper: "claude-haiku-5-5" (~0.1 cent per clip)
 font = "Arial"
 crf = 21
 max_parallel = 1
