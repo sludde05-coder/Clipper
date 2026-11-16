@@ -43,8 +43,9 @@ class Orchestrator:
             lines.append(f"{key:32} {'live' if s.recorder.live else '--':6} "
                          f"{s.detector.last_rate:7.1f} {s.detector.last_baseline:7.1f} "
                          f"{('x%.1f' % peak) if peak else '-':>9} {s.clips_saved:5}")
-        lines.append(f"(a clip is made when chat reaches x{need:g} its normal speed; "
-                     f"'video --' means nothing is being recorded)")
+        lines.append(f"A clip is made when chat reaches x{need:g} its normal speed AND at least "
+                     f"{self.cfg.detector.min_rate:g} messages/s.")
+        lines.append("'video --' means nothing is being recorded.")
         log.info("status\n  %s", "\n  ".join(lines))
 
     async def run_discovery(self) -> None:

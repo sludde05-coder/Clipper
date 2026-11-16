@@ -115,7 +115,7 @@ class SpikeDetector:
         spread = max(mad, math.sqrt(max(base, 0.1) / cfg.short_window), 0.2)
         z = (rate - base) / spread
         self.last_baseline = base
-        if now - self._first_ts >= cfg.warmup and rate >= cfg.min_rate:
+        if now - self._first_ts >= cfg.warmup and rate > 0:
             self._ratios.append((now, rate / max(base, 0.1)))
 
         if now - self._first_ts < cfg.warmup:
