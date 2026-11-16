@@ -260,7 +260,8 @@ MENU = """
   5) Open the clips folder
   6) Set up or change API keys
   7) Post clips (drop them in the POST folder)
-  8) Quit
+  8) Check that everything works
+  9) Quit
 """
 
 
@@ -318,7 +319,9 @@ def run_menu() -> None:
             elif choice == "7":
                 open_folder(Path("POST"))
                 _run("post")
-            elif choice in ("8", "q", "quit", "exit"):
+            elif choice == "8":
+                _run("check")
+            elif choice in ("9", "q", "quit", "exit"):
                 return
         except KeyboardInterrupt:
             print("\nStopped.")

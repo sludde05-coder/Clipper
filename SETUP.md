@@ -37,7 +37,8 @@ More detail on each key is in [step 6](#6-get-your-api-keys) below. Skipped one?
   5) Open the clips folder
   6) Set up or change API keys
   7) Post clips (drop them in the POST folder)
-  8) Quit
+  8) Check that everything works
+  9) Quit
 ```
 
 Type a number and press Enter. **Ctrl+C** stops clipping and takes you back to the menu.
@@ -544,6 +545,12 @@ All settings are in `config.toml`. Open it, change a value, save, then stop (Ctr
 ---
 
 ## 12. Troubleshooting
+
+**Start with the check:** open the clipper menu and choose **8) Check that everything works**. It tests
+Python, ffmpeg, the video downloader, speech-to-text (and offers to download its model), your AI key and your
+stream keys. It also tells you whether your last few clips actually got AI captions and speech-to-text.
+Every ✘ line comes with what to do about it.
+
 
 | What you see | What to do |
 |---|---|

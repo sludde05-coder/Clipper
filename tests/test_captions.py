@@ -13,12 +13,15 @@ def test_chat_mood():
     assert chat_mood(["WTF", "???", "NO WAY", "huh"])[0] == "shock"
 
 
-def test_rule_plan_uses_chat_and_name():
+def test_rule_plan_uses_chat_mood_but_not_chat_words():
     meta = {"name": "Kai", "platform": "twitch", "explosion_offset": 30,
             "chat_timeline": [[30.1, "a", "KEKW"], [30.2, "b", "KEKW"], [30.3, "c", "LMAO"]]}
+    hooks = {rule_plan(meta, []).hook for _ in range(40)}
+    assert len(hooks) > 2                                   # varied, not one template
+    assert all("chat" not in h.lower() for h in hooks)
     p = rule_plan(meta, [])
-    assert p.mood == "funny" and "Kai" in p.hook
-    assert p.beats and p.beats[0].text == "CHAT: KEKW" and p.beats[0].t > 30
+    assert p.mood == "funny"
+    assert p.beats and p.beats[0].text == "WAIT FOR IT" and p.beats[0].t < 30
 
 
 def test_grouping_breaks_on_pause_and_punctuation():

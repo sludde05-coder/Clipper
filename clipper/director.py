@@ -39,14 +39,23 @@ MOOD_WORDS = {
     "wholesome": {"❤", "❤️", "<3", "aww", "cute", "wholesome", "love", "🥺", "peepohappy"},
 }
 
+# Fallback headlines (no AI): several per mood, picked at random so clips don't all read the same.
 HOOKS = {
-    "funny": "{name} had chat CRYING",
-    "hype": "{name} just went CRAZY",
-    "shock": "Chat could NOT believe this",
-    "rage": "{name} is LIVID",
-    "sad": "This hurt to watch",
-    "wholesome": "This was too wholesome",
+    "funny": ["{name} could not stop laughing", "I can't believe this happened", "{name} was NOT ready for this",
+              "This is why we watch {name}", "Nobody saw that coming", "{name} lost it"],
+    "hype": ["{name} actually pulled it off", "This might be the play of the day", "{name} just went crazy",
+             "Clean. Absolutely clean.", "Tell me this isn't insane", "{name} said watch this"],
+    "shock": ["Wait… what just happened?", "{name} did NOT see that coming", "Nobody was ready for this",
+              "This changed everything", "{name} froze for a second", "Rewind that again"],
+    "rage": ["{name} is so done", "This is going to hurt", "{name} had enough", "And it all fell apart"],
+    "sad": ["This one hurt", "So close…", "{name} will remember this one", "Pain."],
+    "wholesome": ["This made my day", "{name} is the best", "Okay this was really sweet", "Faith in humanity restored"],
 }
+
+
+def pick_hook(mood: str, name: str) -> str:
+    import random
+    return random.choice(HOOKS.get(mood, HOOKS["hype"])).format(name=name or "They")
 
 EMOJI = {"funny": "😂", "hype": "🔥", "shock": "😱", "rage": "😡", "sad": "💔", "wholesome": "🥹"}
 
@@ -100,10 +109,9 @@ def rule_plan(meta: dict, words: list[Word]) -> Plan:
     mood, _ = chat_mood(texts)
     name = meta.get("name") or meta.get("channel", "Streamer")
     offset = float(meta.get("explosion_offset", 30))
-    # The most-spammed chat message becomes an on-screen "chat reaction" beat.
-    spam = Counter(t.strip().upper() for t in texts if 0 < len(t.strip()) <= 24).most_common(1)
-    beats = [Beat(offset + 0.5, f"CHAT: {spam[0][0]}")] if spam else []
-    return Plan(hook=HOOKS[mood].format(name=name), mood=mood, beats=beats,
+    # A short "wait for it" right before the moment, instead of quoting chat.
+    beats = [Beat(max(0.5, offset - 4), "WAIT FOR IT")] if offset > 6 else []
+    return Plan(hook=pick_hook(mood, name), mood=mood, beats=beats,
                 post_caption=f"{name} {EMOJI[mood]} #gta6 #{meta.get('platform', '')} #clips",
                 source="rules")
 
@@ -115,11 +123,11 @@ SCHEMA = {
     "additionalProperties": False,
     "required": ["hook", "mood", "beats", "emphasis", "crop_focus_x", "post_caption"],
     "properties": {
-        "hook": {"type": "string", "description": "Headline shown on top for the whole clip. Max 7 words."},
+        "hook": {"type": "string", "description": "Text above the video about what the streamer did or said. Max 8 words."},
         "mood": {"type": "string", "enum": MOODS},
         "beats": {
             "type": "array",
-            "description": "0-3 short reaction captions at key moments.",
+            "description": "0-2 short captions at key moments.",
             "items": {"type": "object", "additionalProperties": False, "required": ["t", "text"],
                       "properties": {"t": {"type": "number"}, "text": {"type": "string"}}},
         },
@@ -130,28 +138,53 @@ SCHEMA = {
     },
 }
 
-PROMPT = """You are editing a livestream clip into a vertical short (TikTok/Shorts/Reels).
-The clip was cut automatically because Twitch/YouTube/Kick chat suddenly exploded.
+PROMPT = """You are a skilled clip editor turning a livestream moment into a vertical short (TikTok/Shorts/Reels).
+The clip was cut automatically because the stream's chat suddenly exploded, so something big happened
+just before t={offset:.0f}s. Chat is only how the moment was found: it is NOT the story.
 
 Streamer: {name} ({platform})
 Stream title: {title}
-Clip length: {length:.0f}s. Chat exploded at t={offset:.0f}s, so the moment that caused it happened just before that.
+Clip length: {length:.0f}s
 
-Speech transcript (t = seconds from clip start):
+What the streamer says (speech-to-text, t = seconds from clip start):
 {transcript}
 
-Chat around the explosion:
+Chat around the explosion (use it only to understand the mood):
 {chat}
 
-The images are frames from the clip, labelled with their timestamps.
+The images are frames from the clip, labelled with their timestamps. Most are from just before the explosion.
 
-Work out what actually happened, then write:
-- hook: a punchy headline that makes people stop scrolling, about what happened (not generic). Max 7 words. Use the streamer's name if it helps. No hashtags, no emoji.
+First work out what actually happened: what the streamer did, said, saw or reacted to. Then write:
+
+- hook: the text shown above the video for the whole clip. It must make someone stop scrolling.
+  * It's about the streamer and the moment, never about chat. Do not use the word "chat".
+  * Write like a sharp human clipper, casual and specific, not like a news headline or a template.
+  * Pick whichever style fits THIS moment best, and vary it from clip to clip:
+    a funny or dramatic line the streamer actually said (quoted), a reaction ("he did NOT see that coming"),
+    a setup ("POV: you trust the NPC"), a bold claim, or a short question.
+  * Be concrete about what happened. Use the streamer's name only when it adds something.
+  * Max 8 words. No hashtags, no emoji.
+{recent}
 - mood: the overall feel of the moment.
-- beats: 0-3 short on-screen captions (max 5 words each, no emoji) timed to the key moments you can see or hear, e.g. the moment just before the explosion. Don't repeat the hook. Leave beats empty if the speech captions already tell the story.
-- emphasis: words from the transcript worth highlighting (the punchline, names, swear-free key words).
+- beats: 0-2 short on-screen captions (max 5 words each, no emoji), timed to the key moments you can
+  see or hear, e.g. right before the big moment ("wait for it") or the payoff. Not about chat, and don't
+  repeat the hook. Leave beats empty if the speech captions already tell the story.
+- emphasis: words from the transcript worth highlighting (the punchline, names, key words).
 - crop_focus_x: if the video is cropped to a vertical strip, where should its center be so the action stays in frame?
-- post_caption: one line to post with the clip, with 3-5 hashtags."""
+- post_caption: one natural line to post with the clip, in the same voice as the hook but not a copy of it,
+  followed by 3-5 relevant hashtags."""
+
+RETRY = ("Your hook \"{hook}\" is about chat or reuses a recent pattern. Write a new set where the hook is about "
+         "what the streamer did or said in this moment, without the word \"chat\".")
+
+
+def hook_is_weak(hook: str, recent: list[str]) -> bool:
+    """A hook about chat, or one that opens like a recent one, gets one retry."""
+    h = hook.lower().strip()
+    if not h or re.search(r"\bchat\b", h):
+        return True
+    opening = " ".join(h.split()[:2])
+    return any(" ".join(r.lower().split()[:2]) == opening for r in recent[-5:]) and len(h.split()) > 2
 
 
 FALLBACK_MODELS = ("claude-opus-5", "claude-sonnet-5-5", "claude-fable-5")
@@ -168,15 +201,15 @@ def _extract_frames(clip: Path, times: list[float], width: int = 640) -> list[tu
     return frames
 
 
-async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, model: str) -> Plan | None:
+async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, model: str,
+                      recent: list[str] | None = None) -> Plan | None:
     try:
         import anthropic
     except ImportError:
         log.warning("anthropic not installed: using rule-based captions")
         return None
     offset = float(meta.get("explosion_offset", 30))
-    times = sorted({max(0.5, offset * 0.4), max(0.5, offset - 6), max(0.5, offset - 2),
-                    min(length - 0.5, offset + 2), min(length - 0.5, offset + 8)})
+    times = sorted({round(min(max(0.5, offset + d), length - 0.5), 1) for d in (-12, -7, -4, -2, 0, 2, 6)})
     frames = await asyncio.to_thread(_extract_frames, clip, times)
 
     transcript = "\n".join(_lines(words)) or "(no speech detected)"
@@ -186,10 +219,37 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
     for t, b64 in frames:
         content.append({"type": "text", "text": f"Frame at t={t:.1f}s"})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}})
+    recent = recent or []
+    recent_text = ("  * Recent hooks. Don't reuse their wording, structure or opening words:\n"
+                   + "\n".join(f"      - {h}" for h in recent[-12:])) if recent else ""
     content.append({"type": "text", "text": PROMPT.format(
         name=meta.get("name") or meta.get("channel"), platform=meta.get("platform"),
         title=meta.get("title") or "(unknown)", length=length, offset=offset,
-        transcript=transcript, chat=chat)})
+        transcript=transcript, chat=chat, recent=recent_text)})
+    messages = [{"role": "user", "content": content}]
+
+    d = await _ask(model, messages)
+    if d is not None and hook_is_weak(d.get("hook", ""), recent):
+        messages += [{"role": "assistant", "content": json.dumps(d)},
+                     {"role": "user", "content": RETRY.format(hook=d.get("hook", ""))}]
+        d = await _ask(model, messages) or d
+    if d is None:
+        return None
+    mood = d.get("mood") if d.get("mood") in MOODS else "hype"
+    return Plan(
+        hook=d.get("hook", "").strip() or pick_hook(mood, meta.get("name", "")),
+        mood=mood,
+        beats=[Beat(float(b["t"]), b["text"]) for b in d.get("beats", [])[:2]
+               if 0 <= float(b.get("t", -1)) < length and b.get("text")],
+        emphasis=[w.lower() for w in d.get("emphasis", [])][:6],
+        crop_focus_x=min(1.0, max(0.0, float(d.get("crop_focus_x", 0.5)))),
+        post_caption=d.get("post_caption", ""),
+        source="claude",
+    )
+
+
+async def _ask(model: str, messages: list[dict]) -> dict | None:
+    import anthropic
 
     try:
         client = anthropic.AsyncAnthropic()
@@ -200,8 +260,8 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
         resp = await client.beta.messages.create(
             model=model,
             max_tokens=16000,
-            output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
-            messages=[{"role": "user", "content": content}],
+            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
+            messages=messages,
             **fallback,
         )
     except anthropic.AuthenticationError:
@@ -224,21 +284,10 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
         return None
     text = next((b.text for b in resp.content if b.type == "text"), "")
     try:
-        d = json.loads(text)
+        return json.loads(text)
     except json.JSONDecodeError:
         log.warning("Claude returned unparseable JSON: using rule-based captions")
         return None
-    mood = d.get("mood") if d.get("mood") in MOODS else "hype"
-    return Plan(
-        hook=d.get("hook", "").strip() or HOOKS[mood].format(name=meta.get("name", "")),
-        mood=mood,
-        beats=[Beat(float(b["t"]), b["text"]) for b in d.get("beats", [])[:3]
-               if 0 <= float(b.get("t", -1)) < length and b.get("text")],
-        emphasis=[w.lower() for w in d.get("emphasis", [])][:6],
-        crop_focus_x=min(1.0, max(0.0, float(d.get("crop_focus_x", 0.5)))),
-        post_caption=d.get("post_caption", ""),
-        source="claude",
-    )
 
 
 def _lines(words: list[Word]) -> list[str]:

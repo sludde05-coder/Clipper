@@ -40,6 +40,24 @@ def filter_graph(layout: str, focus_x: float) -> str:
             "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,ass=captions.ass[v]")
 
 
+RECENT_FILE = ".recent_hooks.json"
+
+
+def load_recent(folder: Path) -> list[str]:
+    try:
+        return json.loads((folder / RECENT_FILE).read_text(encoding="utf-8"))[-20:]
+    except (OSError, ValueError):
+        return []
+
+
+def remember_hook(folder: Path, hook: str) -> None:
+    try:
+        (folder / RECENT_FILE).write_text(json.dumps((load_recent(folder) + [hook])[-20:], ensure_ascii=False),
+                                         encoding="utf-8")
+    except OSError:
+        pass
+
+
 def wrong_language(tr: Transcript, languages: list[str] | None) -> bool:
     """Only when Whisper is confident and heard enough speech to judge."""
     return bool(languages and tr.language and len(tr.words) >= 8
@@ -74,8 +92,9 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
             return None
         plan: Plan | None = None
         if cfg.ai_captions:
-            plan = await claude_plan(clip, meta, words, length, cfg.ai_model)
+            plan = await claude_plan(clip, meta, words, length, cfg.ai_model, recent=load_recent(clip.parent))
         plan = plan or rule_plan(meta, words)
+        remember_hook(clip.parent, plan.hook)
         log.info("✍️  %s: \"%s\" (%s, %s, %d words, %d beats)", clip.name, plan.hook, plan.mood,
                  plan.source, len(words), len(plan.beats))
 

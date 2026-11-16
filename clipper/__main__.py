@@ -2,6 +2,7 @@
 python -m clipper                          # menu (what the double-click launchers open)
 python -m clipper setup                    # guided API key setup
 python -m clipper post                     # post clips dropped into the POST folder
+python -m clipper check                    # test every part and say what to fix
 python -m clipper run                      # auto-track the top 10 GTA 6 streams
 python -m clipper discover                 # just print the current top 10
 python -m clipper watch twitch:xqc kick:adinross youtube:VIDEO_ID
@@ -35,6 +36,7 @@ def main() -> None:
     sub.add_parser("menu", help="numbered menu (default when no command is given)")
     sub.add_parser("setup", help="guided API key setup")
     sub.add_parser("post", help="walk through posting clips dropped into the POST folder")
+    sub.add_parser("check", help="test every part and say what to fix")
     r = sub.add_parser("run", help="track the top N streams of the configured game")
     r.add_argument("--game", help="override the game (e.g. to test on a game that's live now)")
     d = sub.add_parser("discover", help="print the current top streams and exit")
@@ -57,7 +59,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
-    for noisy in ("asyncio",):
+    for noisy in ("asyncio", "httpx", "httpcore", "anthropic"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(a.config)
     if getattr(a, "game", None):
@@ -73,6 +75,9 @@ def main() -> None:
             asyncio.run(Orchestrator(cfg).run_fixed([parse_target(t) for t in a.targets]))
         elif a.cmd == "discover":
             asyncio.run(_discover(cfg))
+        elif a.cmd == "check":
+            from .doctor import run_checks
+            run_checks(cfg)
         elif a.cmd == "post":
             from pathlib import Path
             from .poster import Poster
