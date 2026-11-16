@@ -527,7 +527,8 @@ All settings are in `config.toml`. Open it, change a value, save, then stop (Ctr
 | `discover` shows nothing | No one is live in that game, or the category name is different (step 9b) |
 | Chat connects but `video` stays `--` | The streamer is offline, or the video download is blocked. Run `pip install -U streamlink` |
 | `kick ... chat dropped (403)` | Kick blocked the chat-room lookup. See the Kick note in README.md |
-| `youtube chat dropped` again and again | Run `pip install -U chat-downloader` |
+| `youtube chat unavailable` for one stream | That stream has chat turned off, or has ended. Others keep working |
+| `youtube chat unavailable` for every YouTube stream | YouTube changed its chat page. Get the latest version (step 13) or ask for a fix |
 | `using rule-based captions` | Not an error: no Anthropic key or credit, so captions are based on chat. Check `[anthropic]` in config and your credit balance |
 | `transcription failed` | The speech model couldn't download. Check your internet and disk space, then restart |
 | Phone clip has no word-by-word captions | Nobody spoke, or transcription failed (see above) |

@@ -17,5 +17,5 @@ def chat_source(stream: Stream, session: aiohttp.ClientSession, creds: Credentia
         return kick_chat(stream.channel, session, creds)
     if stream.platform == "youtube":
         from .youtube import youtube_chat
-        return youtube_chat(stream.url)
+        return youtube_chat(stream.url, session)
     raise ValueError(stream.platform)

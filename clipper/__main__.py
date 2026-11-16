@@ -19,6 +19,13 @@ import aiohttp
 from .config import load_config
 
 
+# What streamers actually write in titles, for testing on games other than GTA 6.
+ALIASES = {
+    "grand theft auto v": ["GTA 5", "GTA V", "GTA RP", "GTA Online"],
+    "grand theft auto vi": ["GTA 6", "GTA VI"],
+}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="clipper", description="Clip livestreams when chat explodes.")
     ap.add_argument("-c", "--config", default="config.toml")
@@ -48,12 +55,12 @@ def main() -> None:
 
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
-    for noisy in ("chat_downloader", "asyncio"):
+    for noisy in ("asyncio",):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config(a.config)
     if getattr(a, "game", None):
         cfg.discovery.game = a.game
-        cfg.discovery.search_terms = [a.game]
+        cfg.discovery.search_terms = [a.game, *ALIASES.get(a.game.lower(), [])]
 
     from .orchestrator import Orchestrator
     from .models import parse_target

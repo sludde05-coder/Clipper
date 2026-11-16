@@ -30,7 +30,7 @@ captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 2. **Rolling buffer.** For each stream, `streamlink` pipes video into `ffmpeg`, which writes 2-second
    pieces to `buffer/`. Anything older than about 2 minutes is deleted, so disk use stays small.
 3. **Chat.** Reads chat live: Twitch over anonymous IRC, Kick over its Pusher websocket, YouTube
-   through `chat-downloader`. Reading chat needs no keys.
+   by polling the same chat feed the YouTube website uses. Reading chat needs no keys.
 4. **Explosion detection.** Every second it compares the last 5 seconds of chat with the previous
    5 minutes. A clip fires when chat is at least **3× normal** *and* far outside normal variation.
    Each chatter counts once per second, so one spammer can't trigger it. "Normal" is learned per
@@ -149,8 +149,8 @@ Everything is in `config.toml`:
 - **Kick:** finding a chat room uses `kick.com/api/v2/channels/<slug>`, which Cloudflare sometimes
   blocks. If Kick chat won't connect, find the chatroom id in your browser (open that URL) and
   track it as `kick:slug#123456`.
-- **YouTube** chat reading uses `chat-downloader`, which follows YouTube's page format. If YouTube
-  changes it, run `pip install -U chat-downloader`.
+- **YouTube** chat is read from YouTube's own website chat feed, which isn't an official API.
+  If YouTube changes it and chat stops connecting, the clipper needs an update.
 - Clips are other people's content. Check each platform's terms and credit the streamer if you post them.
 
 ## Tests

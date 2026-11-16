@@ -119,9 +119,9 @@ class Discovery:
         by_channel: dict[str, Stream] = {}
         for v in videos:
             sn = v["snippet"]
-            text = (sn.get("title", "") + " " + sn.get("description", "")).lower()
-            if not any(t in text for t in terms):
-                continue  # search is fuzzy; keep only streams that actually say GTA 6
+            title = sn.get("title", "").lower()
+            if not any(t in title for t in terms):
+                continue  # search is fuzzy; keep only streams whose title names the game
             viewers = int(v.get("liveStreamingDetails", {}).get("concurrentViewers", 0))
             st = Stream("youtube", v["id"], f"https://www.youtube.com/watch?v={v['id']}",
                         viewers, sn.get("title", ""), sn.get("channelTitle", ""))
