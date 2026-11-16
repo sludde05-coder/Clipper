@@ -49,6 +49,13 @@ class ChannelSession:
         self._tasks = [asyncio.create_task(self.recorder.run(), name=f"rec-{self.stream.key}"),
                        asyncio.create_task(self._read_chat(), name=f"chat-{self.stream.key}"),
                        asyncio.create_task(self._watch(), name=f"watch-{self.stream.key}")]
+        for t in self._tasks:
+            t.add_done_callback(self._report_crash)
+
+    def _report_crash(self, task: asyncio.Task) -> None:
+        # A crashed background task would otherwise stop silently.
+        if not task.cancelled() and task.exception() is not None:
+            log.error("%s: %s stopped with an error: %r", self.stream.key, task.get_name(), task.exception())
 
     async def stop(self) -> None:
         # Let clips that are already waiting for their post-roll finish first.
@@ -68,6 +75,9 @@ class ChannelSession:
         while True:
             await asyncio.sleep(1)
             spike = self.detector.check()
+            if spike and not self.recorder.live:
+                log.warning("🔥 %s chat exploded (x%.1f) but no video is being recorded, so no clip. "
+                            "See the recording messages for this channel.", self.stream.key, spike.ratio)
             if spike and self.recorder.live:
                 log.info("🔥 %s chat exploded: %.1f msg/s vs %.1f normal (x%.1f, z=%.1f)",
                          self.stream.key, spike.rate, spike.baseline, spike.ratio, spike.zscore)

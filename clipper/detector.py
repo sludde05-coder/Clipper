@@ -51,6 +51,14 @@ class SpikeDetector:
         self._last_spike = -math.inf
         self.last_rate = 0.0
         self.last_baseline = 0.0
+        self._ratios: deque[tuple[float, float]] = deque()  # (time, rate/normal), for the status table
+
+    def peak_ratio(self, window: float = 600, now: float | None = None) -> float:
+        """Biggest jump over normal in the last `window` seconds (shown in the status table)."""
+        now = time.time() if now is None else now
+        while self._ratios and self._ratios[0][0] < now - window:
+            self._ratios.popleft()
+        return max((r for _, r in self._ratios), default=0.0)
 
     def add(self, user: str, ts: float | None = None) -> None:
         ts = time.time() if ts is None else ts
@@ -107,6 +115,8 @@ class SpikeDetector:
         spread = max(mad, math.sqrt(max(base, 0.1) / cfg.short_window), 0.2)
         z = (rate - base) / spread
         self.last_baseline = base
+        if now - self._first_ts >= cfg.warmup and rate >= cfg.min_rate:
+            self._ratios.append((now, rate / max(base, 0.1)))
 
         if now - self._first_ts < cfg.warmup:
             return None

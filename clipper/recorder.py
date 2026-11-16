@@ -11,6 +11,7 @@ import asyncio
 import logging
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -28,21 +29,33 @@ class Recorder:
         self.dir = workdir
         self.segment_seconds = segment_seconds
         self.keep_seconds = keep_seconds
-        self.source_cmd = source_cmd or ["streamlink", "--stdout", "--loglevel", "error",
+        # Run streamlink through this same Python: the launchers don't put the
+        # environment's Scripts/bin folder on PATH, so a bare "streamlink" isn't found.
+        self.source_cmd = source_cmd or [sys.executable, "-m", "streamlink", "--stdout", "--loglevel", "error",
                                          "--retry-open", "3", url, quality]
         self._procs: list[subprocess.Popen] = []
-        self.live = False
+        self._src_log = self.dir / "streamlink.log"
+        self._ff_log = self.dir / "ffmpeg.log"
+
+    @property
+    def live(self) -> bool:
+        """True while video is actually arriving (a fresh segment was written recently)."""
+        segs = self.segments()
+        return bool(segs) and time.time() - segs[-1][0] < self.segment_seconds * 3 + 8
 
     def _start(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
-        src = subprocess.Popen(self.source_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        src_err, ff_err = open(self._src_log, "wb"), open(self._ff_log, "wb")
+        src = subprocess.Popen(self.source_cmd, stdout=subprocess.PIPE, stderr=src_err)
         ff = subprocess.Popen(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
              "-map", "0:v?", "-map", "0:a?", "-c", "copy",
              "-f", "segment", "-segment_time", str(self.segment_seconds),
              "-reset_timestamps", "1", "-strftime", "1",
              str(self.dir / f"seg_{SEG_FMT}.ts")],
-            stdin=src.stdout, stderr=subprocess.DEVNULL)
+            stdin=src.stdout, stderr=ff_err)
+        src_err.close()  # the child processes keep their own handles
+        ff_err.close()
         src.stdout.close()  # ffmpeg owns the pipe now
         self._procs = [src, ff]
 
@@ -61,23 +74,44 @@ class Recorder:
         backoff = 5
         try:
             while True:
-                self._start()
+                try:
+                    self._start()
+                except OSError as e:
+                    log.error("%s can't start recording: %s", self.name, e)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 120)
+                    continue
                 started = time.time()
-                log.info("%s recording started", self.name)
+                announced = False
                 while all(p.poll() is None for p in self._procs):
-                    self.live = True
                     self.prune()
+                    if not announced and self.live:
+                        log.info("%s recording", self.name)
+                        announced = True
+                    elif not announced and time.time() - started > 60:
+                        log.warning("%s: no video after 60 s. %s", self.name, self._last_error() or "still waiting")
+                        announced = True
                     await asyncio.sleep(2)
-                self.live = False
                 self._stop()
                 if time.time() - started > 60:
                     backoff = 5
-                log.warning("%s recording stopped, restarting in %ss", self.name, backoff)
+                log.warning("%s recording stopped (%s), retrying in %ss",
+                            self.name, self._last_error() or "stream ended or went offline", backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 120)
         finally:
-            self.live = False
             self._stop()
+
+    def _last_error(self) -> str:
+        # streamlink's message explains the cause; ffmpeg's ("Invalid data") is usually just the effect.
+        for path in (self._src_log, self._ff_log):
+            try:
+                lines = [ln.strip() for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
+            except OSError:
+                continue
+            if lines:
+                return lines[-1][:200]
+        return ""
 
     def segments(self) -> list[tuple[float, Path]]:
         out = []
