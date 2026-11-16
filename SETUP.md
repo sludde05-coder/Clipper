@@ -36,7 +36,8 @@ More detail on each key is in [step 6](#6-get-your-api-keys) below. Skipped one?
   4) Test on a game that's live right now
   5) Open the clips folder
   6) Set up or change API keys
-  7) Quit
+  7) Post clips (drop them in the POST folder)
+  8) Quit
 ```
 
 Type a number and press Enter. **Ctrl+C** stops clipping and takes you back to the menu.
@@ -70,7 +71,7 @@ Each step says what you should see when it worked, so you know it's safe to move
 7. [Fill in the config file](#7-fill-in-the-config-file)
 8. [Test that everything works](#8-test-that-everything-works)
 9. [Release day](#9-release-day)
-10. [Your clips](#10-your-clips)
+10. [Your clips (and posting them)](#10-your-clips-and-posting-them)
 11. [Adjusting how it clips](#11-adjusting-how-it-clips)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Updating to a newer version](#13-updating-to-a-newer-version)
@@ -476,7 +477,7 @@ starting new streams that climb into the top 10 and dropping ones that fall out.
 
 ---
 
-## 10. Your clips
+## 10. Your clips (and posting them)
 
 Everything goes into the `clips` folder. Each clip has three files:
 
@@ -500,6 +501,29 @@ slipped past the English-only filter. They get no phone version. Delete them or 
 The `buffer` folder is temporary video the app deletes as it goes. You can ignore it.
 
 ---
+
+### Posting your clips
+
+1. Open the clipper menu and choose **7**. A `POST` folder opens (it's inside your clipper folder).
+2. Copy a clip you like into it: the **`_vertical.mp4`** one from `clips`. Leave that window open.
+3. The clipper picks it up within a few seconds and goes through **TikTok, YouTube Shorts and Instagram Reels** one at a time:
+   - It opens the platform's upload page in your browser, and a folder window with the clip selected.
+   - **Drag the clip** from the folder window onto the upload page.
+   - The caption is **already copied** for that platform: paste it with **Ctrl+V** (Cmd+V on a Mac).
+     It has the AI-written line, credit to the streamer (e.g. "🎥 KaiCenat on Twitch") and hashtags.
+     YouTube gets a title and a description, copied one after the other.
+   - Press **Post**, then go back to the clipper window and press **Enter** for the next platform.
+     Type **s** and Enter to skip a platform.
+4. When it's done, the clip moves to `POST/posted`, with a `.txt` file next to it holding every caption.
+   That's handy if you'd rather post from your phone.
+
+You need to be logged in to TikTok, YouTube and Instagram in your browser. Drop several clips in at once
+and it takes them one after another. To change the platforms or turn off the streamer credit, edit `[post]`
+in `config.toml`, e.g. `platforms = ["tiktok", "youtube"]`.
+
+> Why not fully automatic? TikTok and YouTube keep videos uploaded by unapproved apps private, Instagram needs
+> a business account and a Meta developer app, and bots that click through the websites get accounts banned.
+> This way you just press Post, and nothing can get your account in trouble.
 
 ## 11. Adjusting how it clips
 

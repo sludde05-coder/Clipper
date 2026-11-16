@@ -1,6 +1,7 @@
 """
 python -m clipper                          # menu (what the double-click launchers open)
 python -m clipper setup                    # guided API key setup
+python -m clipper post                     # post clips dropped into the POST folder
 python -m clipper run                      # auto-track the top 10 GTA 6 streams
 python -m clipper discover                 # just print the current top 10
 python -m clipper watch twitch:xqc kick:adinross youtube:VIDEO_ID
@@ -33,6 +34,7 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("menu", help="numbered menu (default when no command is given)")
     sub.add_parser("setup", help="guided API key setup")
+    sub.add_parser("post", help="walk through posting clips dropped into the POST folder")
     r = sub.add_parser("run", help="track the top N streams of the configured game")
     r.add_argument("--game", help="override the game (e.g. to test on a game that's live now)")
     d = sub.add_parser("discover", help="print the current top streams and exit")
@@ -71,6 +73,10 @@ def main() -> None:
             asyncio.run(Orchestrator(cfg).run_fixed([parse_target(t) for t in a.targets]))
         elif a.cmd == "discover":
             asyncio.run(_discover(cfg))
+        elif a.cmd == "post":
+            from pathlib import Path
+            from .poster import Poster
+            Poster(cfg.post, Path(cfg.clips.output_dir)).watch()
         elif a.cmd == "simulate":
             _simulate(cfg)
         elif a.cmd == "render":

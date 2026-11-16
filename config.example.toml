@@ -56,5 +56,10 @@ font = "Arial"
 crf = 21
 max_parallel = 1
 
+[post]                  # drop clips into the POST folder to be walked through posting them
+folder = "POST"
+platforms = ["tiktok", "youtube", "instagram"]
+credit = true           # name the streamer and platform in every caption
+
 [anthropic]  # optional: https://console.anthropic.com → API Keys. Lets Claude write the captions.
 api_key = ""

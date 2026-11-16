@@ -47,6 +47,13 @@ class VerticalConfig:
 
 
 @dataclass
+class PostConfig:
+    folder: str = "POST"            # drop clips here to post them
+    platforms: list[str] = field(default_factory=lambda: ["tiktok", "youtube", "instagram"])
+    credit: bool = True             # name the streamer and platform in every caption
+
+
+@dataclass
 class Credentials:
     twitch_client_id: str = ""
     twitch_client_secret: str = ""
@@ -64,6 +71,7 @@ class Config:
     detector: DetectorConfig = field(default_factory=DetectorConfig)
     clips: ClipConfig = field(default_factory=ClipConfig)
     vertical: VerticalConfig = field(default_factory=VerticalConfig)
+    post: PostConfig = field(default_factory=PostConfig)
     creds: Credentials = field(default_factory=Credentials)
 
 
@@ -83,6 +91,7 @@ def load_config(path: str | None) -> Config:
         _fill(cfg.detector, data.get("detector", {}))
         _fill(cfg.clips, data.get("clips", {}))
         _fill(cfg.vertical, data.get("vertical", {}))
+        _fill(cfg.post, data.get("post", {}))
         for platform in ("twitch", "youtube", "kick"):
             _fill(cfg.creds, data.get(platform, {}), prefix=platform + "_")
         # The Anthropic SDK reads its key from the environment; let the file supply it.

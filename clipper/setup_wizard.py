@@ -259,7 +259,8 @@ MENU = """
   4) Test on a game that's live right now
   5) Open the clips folder
   6) Set up or change API keys
-  7) Quit
+  7) Post clips (drop them in the POST folder)
+  8) Quit
 """
 
 
@@ -314,7 +315,10 @@ def run_menu() -> None:
                 open_folder(Path("clips"))
             elif choice == "6":
                 run_wizard()
-            elif choice in ("7", "q", "quit", "exit"):
+            elif choice == "7":
+                open_folder(Path("POST"))
+                _run("post")
+            elif choice in ("8", "q", "quit", "exit"):
                 return
         except KeyboardInterrupt:
             print("\nStopped.")

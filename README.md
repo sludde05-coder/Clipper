@@ -79,6 +79,15 @@ python -m clipper render clips/*.mp4 --no-ai
 Rendering is CPU-heavy (about 20–40 s per clip), so clips render one at a time (`max_parallel`).
 Recording is never held up by rendering.
 
+## Posting clips
+
+Drop a clip into the `POST` folder (menu option 7, or `python -m clipper post`) and the clipper walks you through
+posting it to **TikTok, YouTube Shorts and Instagram Reels**. For each one it opens the upload page, shows the
+file to drag in, and copies a caption written for that platform: the AI line, credit to the streamer, and
+hashtags (`#shorts` for YouTube, a separate title, and so on). You paste and press Post. Posted clips move to
+`POST/posted` with their captions saved in a `.txt` file. It doesn't upload on its own: platforms keep uploads
+from unapproved apps private, and automating their websites gets accounts banned.
+
 ## Setup
 
 You need Python **3.11–3.13** (the speech-to-text package doesn't support newer Python yet) and **ffmpeg** (`brew install ffmpeg`, `winget install ffmpeg`, `apt install ffmpeg`).
