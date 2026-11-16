@@ -82,7 +82,7 @@ def main() -> None:
                 cfg.vertical.ai_captions = False
             async def _render():
                 for c in a.clips:
-                    await render_vertical(Path(c), cfg.vertical)
+                    await render_vertical(Path(c), cfg.vertical, languages=cfg.discovery.languages)
             asyncio.run(_render())
     except KeyboardInterrupt:
         pass

@@ -27,6 +27,9 @@ captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 ## How it works
 
 1. **Discovery.** Asks each platform's API for live streams of the game and keeps the top 10 by viewers.
+   **English streams only** by default (`languages` in config). Twitch and Kick label each stream's language.
+   YouTube often doesn't, so its titles are checked for other languages, and every clip's speech is checked
+   again: clips that are clearly in another language go to `clips/other-languages` instead.
 2. **Rolling buffer.** For each stream, `streamlink` pipes video into `ffmpeg`, which writes 2-second
    pieces to `buffer/`. Anything older than about 2 minutes is deleted, so disk use stays small.
 3. **Chat.** Reads chat live: Twitch over anonymous IRC, Kick over its Pusher websocket, YouTube

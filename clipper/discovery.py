@@ -6,6 +6,10 @@
             10,000 daily quota units, hence the slower refresh.
   Kick    – Public API, livestreams in the game's category sorted by viewers.
 
+Only streams in the configured languages are kept (default: English). Twitch and
+Kick label each stream's language; YouTube often doesn't, so there the title
+is checked for signs of another language.
+
 A platform without credentials is skipped with a warning.
 """
 from __future__ import annotations
@@ -16,6 +20,7 @@ import time
 import aiohttp
 
 from .config import Config
+from .language import looks_non_english, matches_language
 from .models import Stream, parse_target
 
 log = logging.getLogger(__name__)
@@ -84,12 +89,16 @@ class Discovery:
                 self._warn_once("twitch-game", f"Twitch has no category named {self.cfg.discovery.game!r} yet")
                 return []
             self._twitch_game_id = data[0]["id"]
-        async with self.s.get(f"{api}/streams", params={"game_id": self._twitch_game_id, "first": 100,
-                                                        "type": "live"}, headers=h) as r:
+        langs = self.cfg.discovery.languages
+        params = [("game_id", self._twitch_game_id), ("first", "100"), *(("language", l) for l in langs)]
+        async with self.s.get(f"{api}/streams", params=params, headers=h) as r:
             r.raise_for_status()
             data = (await r.json())["data"]
         return [Stream("twitch", s["user_login"], f"https://www.twitch.tv/{s['user_login']}",
-                       s["viewer_count"], s["title"], s["user_name"]) for s in data]
+                       s["viewer_count"], s["title"], s["user_name"]) for s in data
+                if matches_language(s.get("language"), langs) is True
+                or (matches_language(s.get("language"), langs) is None
+                    and not ("en" in langs and looks_non_english(s["title"])))]
 
     # ---------- YouTube ----------
     async def _youtube(self) -> list[Stream]:
@@ -101,10 +110,12 @@ class Discovery:
         if time.time() - cached_at < self.cfg.discovery.youtube_refresh_seconds:
             return cached
         api = "https://www.googleapis.com/youtube/v3"
+        langs = self.cfg.discovery.languages
         q = "|".join(f'"{t}"' for t in self.cfg.discovery.search_terms)
         async with self.s.get(f"{api}/search", params={
             "part": "snippet", "eventType": "live", "type": "video", "q": q,
-            "order": "viewCount", "maxResults": 50, "key": key}) as r:
+            "order": "viewCount", "maxResults": 50, "key": key,
+            **({"relevanceLanguage": langs[0]} if len(langs) == 1 else {})}) as r:
             r.raise_for_status()
             items = (await r.json()).get("items", [])
         ids = [i["id"]["videoId"] for i in items]
@@ -122,6 +133,10 @@ class Discovery:
             title = sn.get("title", "").lower()
             if not any(t in title for t in terms):
                 continue  # search is fuzzy; keep only streams whose title names the game
+            # YouTube's language fields are often empty; then judge by the title.
+            lang_ok = matches_language(sn.get("defaultAudioLanguage") or sn.get("defaultLanguage"), langs)
+            if lang_ok is False or (lang_ok is None and "en" in langs and looks_non_english(sn.get("title", ""))):
+                continue
             viewers = int(v.get("liveStreamingDetails", {}).get("concurrentViewers", 0))
             st = Stream("youtube", v["id"], f"https://www.youtube.com/watch?v={v['id']}",
                         viewers, sn.get("title", ""), sn.get("channelTitle", ""))
@@ -152,6 +167,7 @@ class Discovery:
         if not h:
             return []
         api = "https://api.kick.com/public/v1"
+        langs = self.cfg.discovery.languages
         if not self._kick_category_id:
             want = {self.cfg.discovery.game.lower(), *(t.lower() for t in self.cfg.discovery.search_terms)}
             async with self.s.get(f"{api}/categories", params={"q": self.cfg.discovery.game}, headers=h) as r:
@@ -169,6 +185,11 @@ class Discovery:
             data = (await r.json()).get("data", [])
         out = []
         for s in data:
+            if matches_language(s.get("language"), langs) is False:
+                continue
+            if matches_language(s.get("language"), langs) is None and "en" in langs \
+                    and looks_non_english(s.get("stream_title", "")):
+                continue
             slug = s.get("slug") or (s.get("channel") or {}).get("slug")
             if slug:
                 out.append(Stream("kick", slug.lower(), f"https://kick.com/{slug}",

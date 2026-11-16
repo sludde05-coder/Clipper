@@ -109,4 +109,4 @@ class ChannelSession:
                                ensure_ascii=False) + "\n")
         log.info("🎬 saved %s", out)
         if self.cfg.vertical.enabled:
-            await render_vertical(out, self.cfg.vertical)
+            await render_vertical(out, self.cfg.vertical, languages=self.cfg.discovery.languages)

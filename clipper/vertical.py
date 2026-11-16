@@ -17,7 +17,7 @@ from pathlib import Path
 from .captions import build_ass
 from .config import VerticalConfig
 from .director import Plan, claude_plan, rule_plan
-from .transcribe import transcribe
+from .transcribe import Transcript, transcribe
 
 log = logging.getLogger(__name__)
 _slots: asyncio.Semaphore | None = None
@@ -40,7 +40,23 @@ def filter_graph(layout: str, focus_x: float) -> str:
             "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,ass=captions.ass[v]")
 
 
-async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None) -> Path | None:
+def wrong_language(tr: Transcript, languages: list[str] | None) -> bool:
+    """Only when Whisper is confident and heard enough speech to judge."""
+    return bool(languages and tr.language and len(tr.words) >= 8
+                and tr.language_probability >= 0.8 and tr.language not in languages)
+
+
+def set_aside(clip: Path) -> Path:
+    dest = clip.parent / "other-languages"
+    dest.mkdir(exist_ok=True)
+    for f in (clip, clip.with_suffix(".json")):
+        if f.exists():
+            f.replace(dest / f.name)
+    return dest
+
+
+async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
+                          languages: list[str] | None = None) -> Path | None:
     """Make <clip>_vertical.mp4 next to the clip and add the caption plan to its .json."""
     global _slots
     if _slots is None:
@@ -50,7 +66,12 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
         length = await asyncio.to_thread(probe_duration, clip)
 
-        words = await asyncio.to_thread(transcribe, clip, cfg.whisper_model) if cfg.speech_captions else []
+        tr = await asyncio.to_thread(transcribe, clip, cfg.whisper_model) if cfg.speech_captions else Transcript([])
+        words = tr.words
+        if wrong_language(tr, languages):
+            moved = set_aside(clip)
+            log.info("🌐 %s is in %s, not %s: moved to %s", clip.name, tr.language, "/".join(languages or []), moved)
+            return None
         plan: Plan | None = None
         if cfg.ai_captions:
             plan = await claude_plan(clip, meta, words, length, cfg.ai_model)

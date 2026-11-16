@@ -494,6 +494,9 @@ Want the phone version in the other layout (full-screen crop instead of a blurre
 python -m clipper render clips/twitch_name_20261119-131434.mp4 --layout crop
 ```
 
+**`clips/other-languages`** holds clips where the streamer clearly speaks another language, in case one
+slipped past the English-only filter. They get no phone version. Delete them or keep them, as you like.
+
 The `buffer` folder is temporary video the app deletes as it goes. You can ignore it.
 
 ---
@@ -512,6 +515,7 @@ All settings are in `config.toml`. Open it, change a value, save, then stop (Ctr
 | Computer is slow / fans loud | Set `whisper_model = "base"` (faster, slightly worse captions) |
 | Want full-screen phone clips | Set `layout = "crop"` |
 | Small streamers getting in the top 10 | Raise `min_viewers` |
+| Want other languages too | `languages = ["en", "es"]` adds Spanish; `languages = []` allows every language |
 
 ---
 
