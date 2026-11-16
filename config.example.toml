@@ -51,3 +51,6 @@ ai_captions = true      # Claude watches the clip and writes the hook + reaction
 font = "Arial"
 crf = 21
 max_parallel = 1
+
+[anthropic]  # optional: https://console.anthropic.com → API Keys. Lets Claude write the captions.
+api_key = ""

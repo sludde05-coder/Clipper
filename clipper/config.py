@@ -84,6 +84,10 @@ def load_config(path: str | None) -> Config:
         _fill(cfg.vertical, data.get("vertical", {}))
         for platform in ("twitch", "youtube", "kick"):
             _fill(cfg.creds, data.get(platform, {}), prefix=platform + "_")
+        # The Anthropic SDK reads its key from the environment; let the file supply it.
+        key = data.get("anthropic", {}).get("api_key", "")
+        if key and not os.environ.get("ANTHROPIC_API_KEY"):
+            os.environ["ANTHROPIC_API_KEY"] = key
     # Environment variables win, so secrets can stay out of the file.
     for f in fields(cfg.creds):
         env = os.environ.get(f.name.upper())

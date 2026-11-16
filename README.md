@@ -19,6 +19,8 @@ the rankings change.
 Every clip is saved twice: the original 16:9 video, plus a **1080×1920 phone version with
 captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 
+> 📖 **New to this? Follow the step-by-step [setup guide](SETUP.md).**
+
 ## How it works
 
 1. **Discovery.** Asks each platform's API for live streams of the game and keeps the top 10 by viewers.
@@ -92,11 +94,8 @@ API keys are only used to find the top streams. Each one is free:
 
 A platform without keys is skipped. You can also list channels by hand in `always_track`.
 
-For AI captions, also set an Anthropic API key (from [console.anthropic.com](https://console.anthropic.com)):
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...     # Windows: set ANTHROPIC_API_KEY=sk-ant-...
-```
+For AI captions, also add an Anthropic API key (from [console.anthropic.com](https://console.anthropic.com))
+under `[anthropic]` in `config.toml`, or set the `ANTHROPIC_API_KEY` environment variable.
 
 Each clip uses one Claude request (a few frames + transcript + chat), a few cents per clip. The first
 render downloads the Whisper speech model (~500 MB for `small`).
