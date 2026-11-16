@@ -53,7 +53,8 @@ install_pkgs() {  # install_pkgs <mac names> -- <apt names> -- <dnf names>
   fi
 }
 
-python_ok() { "$1" -c 'import sys, venv, ensurepip; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; }
+# 3.11-3.13 only: the speech package has no builds for newer Python yet.
+python_ok() { "$1" -c 'import sys, venv, ensurepip; sys.exit(0 if (3, 11) <= sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; }
 find_python() {
   local c
   for c in python3.13 python3.12 python3.11 python3 python; do
@@ -67,12 +68,12 @@ find_python() {
   return 1
 }
 
-step "Checking Python 3.11 or newer"
+step "Checking Python (needs version 3.11, 3.12 or 3.13)"
 if ! PY="$(find_python)"; then
-  warn "Not found: installing Python"
+  warn "No suitable Python found: installing Python 3.12 (any other Python stays as it is)"
   install_pkgs python@3.12 -- python3 python3-venv python3-pip -- python3 python3-pip
   hash -r
-  PY="$(find_python)" || die "Python 3.11+ still not found. Install it from python.org and run this again."
+  PY="$(find_python)" || die "Python 3.11-3.13 still not found. Install Python 3.12 from python.org and run this again."
 fi
 ok "Python: $("$PY" --version) ($PY)"
 
@@ -99,11 +100,20 @@ fi
 ok "Project folder: $(pwd)"
 
 step "Installing the clipper's Python packages (the slow part)"
+if [ -e .venv/bin/python ] && ! python_ok .venv/bin/python; then
+  warn "Rebuilding the clipper's environment with $("$PY" --version)"
+  rm -r .venv
+fi
 if [ ! -x .venv/bin/python ]; then "$PY" -m venv .venv; fi
 VPY="$(pwd)/.venv/bin/python"
 "$VPY" -m pip install --quiet --upgrade pip
 "$VPY" -m pip install --quiet -r requirements.txt
 ok "Packages installed"
+
+step "Installing speech-to-text (for word-by-word captions)"
+SPEECH=0
+if "$VPY" -m pip install --quiet -r requirements-speech.txt; then SPEECH=1; ok "Speech-to-text installed"
+else warn "Couldn't install it. Clips still get captions, just not word-by-word ones."; fi
 
 if [ ! -f config.toml ]; then cp config.example.toml config.toml; ok "Created config.toml"; fi
 chmod +x Clipper.command install.command install.sh 2>/dev/null || true
@@ -112,11 +122,13 @@ step "Checking the clipper works"
 SELFTEST="$("$VPY" -m clipper -c none simulate 2>&1 || true)"
 if grep -q "fired" <<<"$SELFTEST"; then ok "Self-test passed"; else echo "$SELFTEST"; die "Self-test failed. Send the output above to get help."; fi
 
+if [ "$SPEECH" = 1 ]; then
 step "Downloading the speech-to-text model (~500 MB, one time)"
 if "$VPY" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')" >/dev/null 2>&1; then
   ok "Speech model ready"
 else
   warn "Couldn't download it now. It will download automatically with the first clip."
+fi
 fi
 
 # ---------------------------------------------------------------- keys

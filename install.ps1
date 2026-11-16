@@ -44,13 +44,17 @@ function Winget-Install($id, $extra) {
 function Test-Python($exe, $pre) {
     # The Microsoft Store "python" stub prints nothing useful here, so it fails this test.
     try {
-        $out = & $exe @pre -c "import sys, venv; print(1 if sys.version_info >= (3, 11) else 0)" 2>$null
+        # 3.11-3.13 only: the speech package has no builds for newer Python yet.
+        $out = & $exe @pre -c "import sys, venv; print(1 if (3, 11) <= sys.version_info[:2] <= (3, 13) else 0)" 2>$null
         return ($LASTEXITCODE -eq 0 -and "$out".Trim() -eq '1')
     } catch { return $false }
 }
 
 function Find-Python {
     $candidates = @(
+        @{ exe = 'py'; pre = @('-3.13') },
+        @{ exe = 'py'; pre = @('-3.12') },
+        @{ exe = 'py'; pre = @('-3.11') },
         @{ exe = 'py'; pre = @('-3') },
         @{ exe = 'python'; pre = @() },
         @{ exe = 'python3'; pre = @() }
@@ -74,10 +78,10 @@ try {
     Refresh-Path
 
     # ------------------------------------------------------------ Python
-    Step "Checking Python 3.11 or newer"
+    Step "Checking Python (needs version 3.11, 3.12 or 3.13)"
     $py = Find-Python
     if (-not $py) {
-        Warn "Not found: installing Python 3.12"
+        Warn "No suitable Python found: installing Python 3.12 (any other Python you have stays as it is)"
         Winget-Install 'Python.Python.3.12' @('--scope', 'user', '--override',
             '/quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_pip=1')
         $py = Find-Python
@@ -119,6 +123,10 @@ try {
     # ------------------------------------------------------------ packages
     Step "Installing the clipper's Python packages (the slow part)"
     $vpy = Join-Path (Get-Location) '.venv\Scripts\python.exe'
+    if ((Test-Path $vpy) -and -not (Test-Python $vpy @())) {
+        Warn "Rebuilding the clipper's environment with $pyVersion"
+        Remove-Item -Recurse -Force '.venv'
+    }
     if (-not (Test-Path $vpy)) {
         & $py.exe @($py.pre) -m venv .venv
         if ($LASTEXITCODE -ne 0) { Fail "Couldn't create the Python environment." }
@@ -127,6 +135,11 @@ try {
     & $vpy -m pip install --quiet -r requirements.txt
     if ($LASTEXITCODE -ne 0) { Fail "Package install failed. Check your internet connection and run this again." }
     Ok "Packages installed"
+
+    Step "Installing speech-to-text (for word-by-word captions)"
+    & $vpy -m pip install --quiet -r requirements-speech.txt
+    $speechOk = ($LASTEXITCODE -eq 0)
+    if ($speechOk) { Ok "Speech-to-text installed" } else { Warn "Couldn't install it. Clips still get captions, just not word-by-word ones." }
 
     if (-not (Test-Path 'config.toml')) { Copy-Item 'config.example.toml' 'config.toml'; Ok "Created config.toml" }
 
@@ -139,12 +152,14 @@ try {
     $ErrorActionPreference = 'Stop'
     if ($selftest -match 'fired') { Ok "Self-test passed" } else { Write-Host $selftest; Fail "Self-test failed. Send the output above to get help." }
 
+    if ($speechOk) {
     Step "Downloading the speech-to-text model (~500 MB, one time)"
     $ErrorActionPreference = 'Continue'
     & $vpy -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')" *> $null
     $whisperOk = ($LASTEXITCODE -eq 0)
     $ErrorActionPreference = 'Stop'
     if ($whisperOk) { Ok "Speech model ready" } else { Warn "Couldn't download it now. It will download automatically with the first clip." }
+    }
 
     # ------------------------------------------------------------ keys
     if ($Interactive) {

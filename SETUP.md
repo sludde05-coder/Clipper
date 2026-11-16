@@ -117,7 +117,9 @@ You only do this once.
 
 **3a. Python**
 
-1. Go to [python.org/downloads](https://www.python.org/downloads/) and click the big yellow **Download Python 3.x** button.
+1. Go to [the Python 3.12 download page](https://www.python.org/downloads/release/python-31210/), scroll down to **Files**, and click **Windows installer (64-bit)**.
+   ⚠️ Use **3.12** (3.11 and 3.13 also work). Newer versions like 3.14 and 3.15 are too new for the speech-to-text part.
+   You can keep a newer Python installed too; they don't interfere.
 2. Run the downloaded file.
 3. ⚠️ **On the first screen, tick "Add python.exe to PATH"** at the bottom. This is the most common mistake.
    If you miss it, run the installer again, choose **Modify**, and tick it.
@@ -142,7 +144,10 @@ ffmpeg -version
 git --version
 ```
 
-✅ You should see `Python 3.11` or higher, a block of text starting with `ffmpeg version`, and `git version ...`.
+✅ You should see `Python 3.12` (3.11 or 3.13 are fine too), a block of text starting with `ffmpeg version`, and `git version ...`.
+
+> If `python --version` shows a newer version (3.14, 3.15…), that's fine as long as you installed 3.12 as well.
+> In step 5a you'll use `py -3.12` to pick it.
 
 ❌ If `python` opens the Microsoft Store or says "not found", Python isn't on PATH. Redo 3a, step 3.
 You can also try `py --version`; if that works, type `py` wherever this guide says `python`.
@@ -162,18 +167,18 @@ You can also try `py --version`; if that works, type `py` wherever this guide sa
 **3b. Python, ffmpeg and Git:**
 
 ```bash
-brew install python ffmpeg git
+brew install python@3.12 ffmpeg git
 ```
 
 **3c. Check everything is installed:**
 
 ```bash
-python3 --version
+python3.12 --version
 ffmpeg -version
 git --version
 ```
 
-✅ You should see `Python 3.11` or higher, `ffmpeg version ...` and `git version ...`.
+✅ You should see `Python 3.12...`, `ffmpeg version ...` and `git version ...`.
 
 > **Mac users:** use `python3` everywhere this guide says `python`.
 
@@ -199,8 +204,13 @@ cd clipper
 
 **5a. Create a "virtual environment".** This is a private Python just for this project, so it doesn't mess with anything else on your computer.
 
+Windows:
+```powershell
+py -3.12 -m venv .venv
+```
+Mac:
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 ```
 
 **5b. Activate it.** You must do this **every time you open a new terminal** to use the clipper.
@@ -226,9 +236,11 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-speech.txt
 ```
 
-This downloads a lot of text and can take a few minutes.
+This downloads a lot of text and can take a few minutes. The second line adds speech-to-text for
+word-by-word captions. If only that line fails, the clipper still works, just without word-by-word captions.
 
 ✅ It ends with a line starting with `Successfully installed ...`.
 
@@ -541,6 +553,7 @@ git pull
 Then activate (step 5b) and run:
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-speech.txt
 ```
 
 Your `config.toml` and `clips` are never touched by updates.

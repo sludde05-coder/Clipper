@@ -78,12 +78,13 @@ Recording is never held up by rendering.
 
 ## Setup
 
-You need Python 3.11+ and **ffmpeg** (`brew install ffmpeg`, `winget install ffmpeg`, `apt install ffmpeg`).
+You need Python **3.11–3.13** (the speech-to-text package doesn't support newer Python yet) and **ffmpeg** (`brew install ffmpeg`, `winget install ffmpeg`, `apt install ffmpeg`).
 
 ```bash
 cd stream-clipper
-python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+python3.12 -m venv .venv && source .venv/bin/activate    # Windows: py -3.12 -m venv .venv; .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -r requirements-speech.txt     # optional: word-by-word captions
 cp config.example.toml config.toml                   # then add your keys
 ```
 
