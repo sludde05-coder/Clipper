@@ -1,4 +1,6 @@
 """
+python -m clipper                          # menu (what the double-click launchers open)
+python -m clipper setup                    # guided API key setup
 python -m clipper run                      # auto-track the top 10 GTA 6 streams
 python -m clipper discover                 # just print the current top 10
 python -m clipper watch twitch:xqc kick:adinross youtube:VIDEO_ID
@@ -21,7 +23,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="clipper", description="Clip livestreams when chat explodes.")
     ap.add_argument("-c", "--config", default="config.toml")
     ap.add_argument("-v", "--verbose", action="store_true")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("menu", help="numbered menu (default when no command is given)")
+    sub.add_parser("setup", help="guided API key setup")
     r = sub.add_parser("run", help="track the top N streams of the configured game")
     r.add_argument("--game", help="override the game (e.g. to test on a game that's live now)")
     d = sub.add_parser("discover", help="print the current top streams and exit")
@@ -34,6 +38,13 @@ def main() -> None:
     rn.add_argument("--layout", choices=["blur", "crop"])
     rn.add_argument("--no-ai", action="store_true", help="rule-based captions only")
     a = ap.parse_args()
+    if a.cmd in (None, "menu", "setup"):
+        from .setup_wizard import run_menu, run_wizard
+        try:
+            run_wizard(a.config) if a.cmd == "setup" else run_menu()
+        except (KeyboardInterrupt, EOFError):
+            print()
+        return
 
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")

@@ -19,7 +19,10 @@ the rankings change.
 Every clip is saved twice: the original 16:9 video, plus a **1080×1920 phone version with
 captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 
-> 📖 **New to this? Follow the step-by-step [setup guide](SETUP.md).**
+> ⚡ **Easy install:** download the project, then double-click **`install.bat`** (Windows) or
+> **`install.command`** (Mac). It installs everything and walks you through your API keys.
+> Afterwards, double-click **`Clipper.bat`** / **`Clipper.command`** to open the menu.
+> Full walkthrough: [SETUP.md](SETUP.md).
 
 ## How it works
 

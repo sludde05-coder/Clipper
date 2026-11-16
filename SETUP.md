@@ -1,6 +1,60 @@
 # Setup guide, step by step
 
-This guide takes you from nothing installed to clips saving automatically. Follow the steps in order.
+## ⚡ Easy install (recommended)
+
+An installer does nearly everything for you: it installs Python, ffmpeg and the clipper, tests that it works,
+downloads the speech model, and walks you through your API keys.
+
+**1. Download the project.** On [github.com/sludde05-coder/clipper](https://github.com/sludde05-coder/clipper)
+click the green **Code** button → **Download ZIP**. Then unzip it:
+- **Windows:** right-click the ZIP → **Extract All** → **Extract**.
+- **Mac:** double-click the ZIP.
+
+Move the unzipped `clipper` folder somewhere you'll find it, e.g. **Documents**.
+
+**2. Run the installer** in that folder:
+
+| Windows | Mac |
+|---|---|
+| Double-click **`install.bat`** | Right-click **`install.command`** → **Open** → **Open** |
+| If a blue "Windows protected your PC" box appears: **More info** → **Run anyway** | The right-click is needed the first time, because the file came from the internet |
+| Click **Yes** if Windows asks for permission while it installs | Type your Mac password if asked (nothing shows while typing; that's normal) |
+
+It takes **5–15 minutes**. Each part shows `[OK]` (or ✔) as it finishes.
+
+**3. Enter your API keys when it asks.** For each service, it opens the right web page in your browser and lists
+what to click. You copy the key, paste it into the installer window, and it **checks the key works** before saving.
+Paste with **Ctrl+V** or right-click (Windows) or **Cmd+V** (Mac). You need at least **Twitch**.
+More detail on each key is in [step 6](#6-get-your-api-keys) below. Skipped one? You can add it later from the menu.
+
+**4. Start the clipper:** double-click **`Clipper.bat`** (Windows) or **`Clipper.command`** (Mac). A menu opens:
+
+```
+  1) Start clipping: the top 10 GTA 6 streams
+  2) Show who's in the top 10 right now
+  3) Clip specific streamers
+  4) Test on a game that's live right now
+  5) Open the clips folder
+  6) Set up or change API keys
+  7) Quit
+```
+
+Type a number and press Enter. **Ctrl+C** stops clipping and takes you back to the menu.
+
+**5. Test it today:** choose **4** and press Enter to use GTA V. Leave it running 15–30 minutes, then choose
+**5** to see your clips. On release day, choose **1**. Read [step 9](#9-release-day) for the
+release-day checklist (keep the computer awake!).
+
+> **Installer failed?** It says which part failed and why. Fix that and run it again. It's safe to re-run,
+> and it skips whatever is already done. Or follow the manual steps below.
+
+---
+
+# Manual setup
+
+Use this if the installer didn't work, or if you'd like to do it yourself.
+
+This takes you from nothing installed to clips saving automatically. Follow the steps in order.
 Each step says what you should see when it worked, so you know it's safe to move on.
 
 **Time needed:** about 30–45 minutes, most of it creating the free API keys.
@@ -276,6 +330,9 @@ Mac:
 open -e config.toml
 ```
 
+> **Shortcut:** instead of editing the file by hand, run `python -m clipper setup`. It asks for each key,
+> checks it, and saves it for you.
+
 **7c. Paste your keys between the quotes.** Scroll to the bottom. Fill in the sections for the keys you have and leave the rest as `""`.
 It should look like this, with your own keys:
 
@@ -470,6 +527,11 @@ Still stuck? Copy the whole error message from the terminal and send it to whoev
 
 ## 13. Updating to a newer version
 
+**Downloaded the ZIP?** Download the new ZIP and unzip it. Copy your `config.toml` and `clips` folder from
+the old folder into the new one, then double-click the installer in the new folder. It keeps your keys.
+
+**Used `git clone`?**
+
 When the code on GitHub changes:
 
 ```bash
@@ -487,13 +549,17 @@ Your `config.toml` and `clips` are never touched by updates.
 
 ## 14. Cheat sheet
 
-Every time you want to use it:
+**Installed with the installer?** Just double-click `Clipper.bat` (Windows) or `Clipper.command` (Mac).
+
+Or from a terminal, every time you want to use it:
 
 ```bash
 cd ~/clipper
 .venv\Scripts\activate             # Windows
 source .venv/bin/activate          # Mac
 
+python -m clipper                  # the menu
+python -m clipper setup            # enter or change API keys
 python -m clipper discover         # who's live in the top 10?
 python -m clipper run              # record and clip the top 10
 python -m clipper watch twitch:NAME kick:NAME   # record specific streamers
