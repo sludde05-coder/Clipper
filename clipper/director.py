@@ -154,6 +154,9 @@ Work out what actually happened, then write:
 - post_caption: one line to post with the clip, with 3-5 hashtags."""
 
 
+FALLBACK_MODELS = ("claude-opus-5", "claude-sonnet-5-5", "claude-fable-5")
+
+
 def _extract_frames(clip: Path, times: list[float], width: int = 640) -> list[tuple[float, str]]:
     frames = []
     for t in times:
@@ -190,13 +193,16 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
 
     try:
         client = anthropic.AsyncAnthropic()
+        # If the model declines, the API retries on a fallback model. Haiku has no
+        # server-side fallback, so the option is only sent where it exists.
+        fallback = ({"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+                    if model.startswith(FALLBACK_MODELS) else {})
         resp = await client.beta.messages.create(
             model=model,
             max_tokens=16000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",  # if the model declines, the API retries on a fallback model
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
             messages=[{"role": "user", "content": content}],
+            **fallback,
         )
     except anthropic.AuthenticationError:
         log.warning("no valid Anthropic API key: using rule-based captions (set ANTHROPIC_API_KEY)")
