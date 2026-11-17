@@ -29,11 +29,28 @@ def probe_duration(path: Path) -> float:
     return float(r.stdout.strip() or 0)
 
 
-def filter_graph(layout: str, focus_x: float) -> str:
+def probe_video_duration(path: Path) -> float:
+    """Length of the picture itself. The file's overall length can be longer when only the
+    sound runs the full time, which is how a "1-second" clip can still claim to be 50 s."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "stream=duration:format=duration", "-of", "json", str(path)],
+                       capture_output=True, text=True)
+    try:
+        info = json.loads(r.stdout or "{}")
+        streams = info.get("streams") or [{}]
+        return float(streams[0].get("duration") or info.get("format", {}).get("duration") or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def filter_graph(layout: str, focus_x: float, safe: bool = False) -> str:
+    # Safe mode times frames by counting them instead of trusting the video's own clock,
+    # which can jump (e.g. around Twitch ad breaks) and make ffmpeg drop most of the video.
+    src = "[0:v]setpts=N/FRAME_RATE/TB," if safe else "[0:v]"
     if layout == "crop":
-        return (f"[0:v]scale=-2:1920,crop=1080:1920:x='(iw-1080)*{focus_x:.3f}':y=0,"
+        return (f"{src}scale=-2:1920,crop=1080:1920:x='(iw-1080)*{focus_x:.3f}':y=0,"
                 f"setsar=1,ass=captions.ass[v]")
-    return ("[0:v]split[a][b];"
+    return (f"{src}split[a][b];"
             "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
             "gblur=sigma=40,eq=brightness=-0.12:saturation=1.2[bg];"
             "[b]scale=1080:-2[fg];"
@@ -56,6 +73,21 @@ def remember_hook(folder: Path, hook: str) -> None:
                                          encoding="utf-8")
     except OSError:
         pass
+
+
+async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x: float,
+                  safe: bool) -> tuple[bool, str]:
+    audio = ["-af", "asetpts=N/SR/TB"] if safe else []
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        *(["-fflags", "+genpts"] if safe else []), "-i", str(clip.resolve()),
+        "-filter_complex", filter_graph(cfg.layout, focus_x, safe),
+        "-map", "[v]", "-map", "0:a?", *audio,
+        "-c:v", "libx264", "-preset", cfg.preset, "-crf", str(cfg.crf), "-pix_fmt", "yuv420p",
+        "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out.resolve()),
+        cwd=tmp, stderr=asyncio.subprocess.PIPE)
+    _, err = await proc.communicate()
+    return proc.returncode == 0, err.decode(errors="replace").strip()
 
 
 def wrong_language(tr: Transcript, languages: list[str] | None) -> bool:
@@ -102,17 +134,19 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "captions.ass").write_text(
                 build_ass(plan, words, length, cfg.layout, cfg.font), encoding="utf-8")
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(clip.resolve()),
-                "-filter_complex", filter_graph(cfg.layout, plan.crop_focus_x),
-                "-map", "[v]", "-map", "0:a?",
-                "-c:v", "libx264", "-preset", cfg.preset, "-crf", str(cfg.crf), "-pix_fmt", "yuv420p",
-                "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out.resolve()),
-                cwd=tmp, stderr=asyncio.subprocess.PIPE)
-            _, err = await proc.communicate()
-        if proc.returncode != 0:
-            log.error("vertical render failed for %s: %s", clip.name, err.decode(errors="replace")[-600:])
-            return None
+            want = probe_video_duration(clip) or length
+            for safe in (False, True):
+                ok, err = await _encode(clip, out, tmp, cfg, plan.crop_focus_x, safe)
+                got = probe_video_duration(out) if ok else 0.0
+                if ok and got >= want - 1.5:
+                    break
+                log.warning("%s: phone version came out %.1f s instead of %.1f s%s", clip.name, got, want,
+                            ", rendering again in safe mode" if not safe else "")
+            else:
+                out.unlink(missing_ok=True)
+                log.error("couldn't make a proper phone version of %s (%s). The original clip is fine.",
+                          clip.name, err[-300:] or "video too short")
+                return None
 
         meta["vertical"] = out.name
         meta["captions"] = {**asdict(plan), "transcript": " ".join(w.text for w in words)}
