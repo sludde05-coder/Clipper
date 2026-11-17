@@ -25,8 +25,8 @@ class DiscoveryConfig:
 class ClipConfig:
     output_dir: str = "clips"
     buffer_dir: str = "buffer"
-    pre_roll: int = 30        # seconds kept before the chat explosion
-    post_roll: int = 20       # seconds kept after the detector fires
+    pre_roll: int = 22        # seconds kept before the chat explosion
+    post_roll: int = 8        # seconds kept after it (22 + 8 = a 30-second clip)
     chat_delay: int = 0       # extra seconds to shift the clip earlier
     segment_seconds: int = 2
     quality: str = "best"

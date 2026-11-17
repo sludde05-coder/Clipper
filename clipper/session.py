@@ -88,7 +88,8 @@ class ChannelSession:
     async def _clip(self, spike: Spike) -> None:
         c = self.cfg.clips
         start = spike.onset - c.pre_roll - c.chat_delay
-        end = spike.detected_at + c.post_roll - c.chat_delay
+        # Both ends are measured from the explosion, so every clip is exactly pre_roll + post_roll long.
+        end = spike.onset + c.post_roll - c.chat_delay
         # Wait until the post-roll has been recorded and its segment closed.
         await asyncio.sleep(max(0.0, end - time.time()) + c.segment_seconds * 2 + 1)
         stamp = datetime.fromtimestamp(spike.onset).strftime("%Y%m%d-%H%M%S")

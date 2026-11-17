@@ -60,12 +60,12 @@ def test_clip_saved_with_preroll(tmp_path):
     assert sess.clips_saved == 1
     clips = [c for c in (tmp_path / "clips").glob("*.mp4") if not c.stem.endswith("_vertical")]
     assert len(clips) == 1
-    # pre_roll 8 + burst detection (~1-3 s) + post_roll 4, at 1 s segment granularity
-    assert 11 <= duration(clips[0]) <= 18, duration(clips[0])
+    # pre_roll 8 + post_roll 4, trimmed to the exact second
+    assert abs(duration(clips[0]) - 12) <= 0.25, duration(clips[0])
     meta = json.loads(clips[0].with_suffix(".json").read_text())
     assert meta["chat_rate"] > meta["normal_rate"] * 3
     assert any("OMEGALUL" in line for line in meta["chat_sample"])
-    assert 6 <= meta["explosion_offset"] <= 11
+    assert abs(meta["explosion_offset"] - 8) <= 0.25, meta["explosion_offset"]
     # Phone version: 9:16, captions picked "funny" from the OMEGALUL spam.
     vert = clips[0].with_name(clips[0].stem + "_vertical.mp4")
     size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries",

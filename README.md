@@ -1,7 +1,7 @@
 # Stream Clipper
 
 Watches livestream chat and saves a clip whenever chat explodes. Each clip
-starts **30 seconds before** the explosion, so you get the moment that set
+is **30 seconds long: 22 seconds before** the explosion and 8 after, so you get the moment that set
 chat off, not just the reaction.
 
 By default it finds the **10 biggest GTA 6 streams** across **Twitch, YouTube
@@ -39,7 +39,7 @@ captions** ready for TikTok, YouTube Shorts and Instagram Reels.
    Each chatter counts once per second, so one spammer can't trigger it. "Normal" is learned per
    channel, so 60 msg/s on a huge channel and 2 msg/s on a small one both work.
 5. **Clip.** It finds where the surge began, waits 20 seconds for the aftermath, then joins the
-   pieces from 30 s before the surge to 20 s after into one `.mp4` (no re-encoding, so it's fast).
+   pieces from 22 s before the surge to 8 s after into one 30-second `.mp4`, trimmed to the exact second.
    A `.json` file next to it holds the stats and a sample of what chat was saying.
 6. **Phone version.** The clip is turned into a captioned vertical video (see below).
 

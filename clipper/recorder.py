@@ -8,16 +8,16 @@ segments covering that time range are joined into one .mp4 without re-encoding.
 from __future__ import annotations
 
 import asyncio
+import re
 import logging
 import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
-SEG_FMT = "%Y%m%d-%H%M%S"
+SEG_RE = re.compile(r"^seg_(\d+)_(\d+)\.ts$")
 
 
 class Recorder:
@@ -41,7 +41,7 @@ class Recorder:
     def live(self) -> bool:
         """True while video is actually arriving (a fresh segment was written recently)."""
         segs = self.segments()
-        return bool(segs) and time.time() - segs[-1][0] < self.segment_seconds * 3 + 8
+        return bool(segs) and time.time() - segs[-1][1] < self.segment_seconds * 3 + 8
 
     def _start(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -51,8 +51,9 @@ class Recorder:
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
              "-map", "0:v?", "-map", "0:a?", "-c", "copy",
              "-f", "segment", "-segment_time", str(self.segment_seconds),
-             "-reset_timestamps", "1", "-strftime", "1",
-             str(self.dir / f"seg_{SEG_FMT}.ts")],
+             "-reset_timestamps", "1",
+             # Numbered, with a per-start prefix so a restart never overwrites older pieces.
+             str(self.dir / f"seg_{int(time.time() * 1000)}_%06d.ts")],
             stdin=src.stdout, stderr=ff_err)
         src_err.close()  # the child processes keep their own handles
         ff_err.close()
@@ -113,27 +114,46 @@ class Recorder:
                 return lines[-1][:200]
         return ""
 
-    def segments(self) -> list[tuple[float, Path]]:
-        out = []
+    def segments(self) -> list[tuple[float, float, Path]]:
+        """(start, end, path) for each buffered piece, oldest first, in wall-clock time.
+
+        A piece's end is when ffmpeg last wrote to it (its modified time), and the next piece
+        starts right then, which is accurate to a fraction of a second. The first piece of a
+        recording run has no predecessor, so its start is estimated from the nominal length."""
+        found = []
         for p in self.dir.glob("seg_*.ts"):
-            try:
-                ts = datetime.strptime(p.stem[4:], SEG_FMT).timestamp()
-            except ValueError:
+            m = SEG_RE.match(p.name)
+            if not m:
                 continue
-            out.append((ts, p))
-        out.sort()
+            try:
+                found.append((int(m.group(1)), int(m.group(2)), p.stat().st_mtime, p))
+            except OSError:
+                continue  # pruned meanwhile
+        found.sort()
+        out: list[tuple[float, float, Path]] = []
+        prev_run, prev_num, prev_end = None, None, None
+        for run, num, mtime, p in found:
+            if run == prev_run and num == prev_num + 1:
+                start = prev_end
+            else:
+                start = mtime - self.segment_seconds
+            out.append((start, mtime, p))
+            prev_run, prev_num, prev_end = run, num, mtime
         return out
 
     def prune(self) -> None:
         cutoff = time.time() - self.keep_seconds
-        for ts, p in self.segments():
-            if ts < cutoff:
+        for start, end, p in self.segments():
+            if end < cutoff:
                 p.unlink(missing_ok=True)
 
     async def save_clip(self, start: float, end: float, out: Path) -> float | None:
-        """Write the clip; returns the wall-clock time its first frame was recorded, or None."""
+        """Write exactly start..end; returns the wall-clock time of its first frame, or None.
+
+        The buffer is in whole segments, so the joined segments are trimmed to the exact
+        second. That needs a re-encode, which also gives every clip clean keyframes."""
         segs = self.segments()[:-1]  # newest one is still being written
-        picked = [(ts, p) for ts, p in segs if ts + self.segment_seconds > start and ts < end]
+        picked = [(s, p) for s, e, p in segs if e > start and s < end]
         if not picked:
             log.error("%s no buffered video for %s..%s", self.name, start, end)
             return None
@@ -152,14 +172,20 @@ class Recorder:
                 continue
             lines.append(f"file '{dst.name}'")
         listing.write_text("\n".join(lines))
+        first = picked[0][0]
+        skip = max(0.0, start - first)                 # into the first segment
+        length = end - max(start, first)
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-f", "concat", "-safe", "0", "-i", str(listing),
-            "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart", str(out),
+            "-ss", f"{skip:.3f}", "-t", f"{length:.3f}",
+            "-map", "0:v?", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out),
             stderr=asyncio.subprocess.PIPE)
         _, err = await proc.communicate()
         shutil.rmtree(tmp, ignore_errors=True)
         if proc.returncode != 0:
             log.error("%s ffmpeg concat failed: %s", self.name, err.decode(errors="replace")[-500:])
             return None
-        return picked[0][0]
+        return first + skip

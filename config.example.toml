@@ -25,8 +25,8 @@ cooldown = 90           # at most one clip per channel per 90 s
 [clips]
 output_dir = "clips"
 buffer_dir = "buffer"
-pre_roll = 30           # seconds kept before the explosion
-post_roll = 20          # seconds kept after it
+pre_roll = 22           # seconds kept before chat explodes
+post_roll = 8           # seconds kept after it (22 + 8 = a 30-second clip)
 chat_delay = 0          # raise if clips start too late (stream delay)
 segment_seconds = 2
 quality = "best"        # or "720p", "480p" to save disk/bandwidth

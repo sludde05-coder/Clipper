@@ -133,7 +133,7 @@ def _simulate(cfg) -> None:
         if spike:
             print(f"  🔥 fired at {spike.detected_at - t0:5.0f}s  onset {spike.onset - t0:5.0f}s  "
                   f"{spike.rate:6.1f} msg/s vs {spike.baseline:4.1f} normal  →  clip "
-                  f"{spike.onset - t0 - cfg.clips.pre_roll:.0f}s..{spike.detected_at - t0 + cfg.clips.post_roll:.0f}s")
+                  f"{spike.onset - t0 - cfg.clips.pre_roll:.0f}s..{spike.onset - t0 + cfg.clips.post_roll:.0f}s")
 
 
 def _poisson(rng: random.Random, lam: float) -> int:

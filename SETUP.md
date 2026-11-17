@@ -485,7 +485,7 @@ Everything goes into the `clips` folder. Each clip has three files:
 
 | File | What it is |
 |---|---|
-| `twitch_name_20261119-131434.mp4` | The original 16:9 clip: 30 s before the chat explosion and 20 s after |
+| `twitch_name_20261119-131434.mp4` | The original 16:9 clip, 30 s long: 22 s before chat explodes and 8 s after |
 | `twitch_name_20261119-131434_vertical.mp4` | **The phone version** (1080×1920) with captions. Post this one |
 | `twitch_name_20261119-131434.json` | Details: chat speed, what chat said, the transcript, and **`post_caption`**, a ready-made caption with hashtags to copy |
 
@@ -578,8 +578,8 @@ All settings are in `config.toml`. Open it, change a value, save, then stop (Ctr
 |---|---|
 | Too many clips / boring clips | Raise `multiplier` from `3.0` to `4.0`, or raise `cooldown` |
 | Missing big moments | Lower `multiplier` to `2.5` |
-| Clips start too late (the moment is cut off) | Raise `pre_roll` (e.g. `45`) or `chat_delay` (e.g. `5`) |
-| Clips end too early | Raise `post_roll` |
+| Clips start too late (the moment is cut off) | Raise `pre_roll` (e.g. `25`) and lower `post_roll` to keep 30 s, or raise `chat_delay` (e.g. `3`) |
+| Clips end too early | Raise `post_roll` (the clip gets longer than 30 s), or lower `pre_roll` to keep 30 s |
 | Internet can't keep up / video stutters | Set `quality = "720p"`, or lower `top_n` to `5` |
 | Computer is slow / fans loud | Set `whisper_model = "base"` (faster, slightly worse captions) |
 | Want full-screen phone clips | Set `layout = "crop"` |
