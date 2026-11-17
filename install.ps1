@@ -41,11 +41,21 @@ function Winget-Install($id, $extra) {
     Refresh-Path
 }
 
+# Windows on ARM (Snapdragon laptops, Surface Pro 11, ...): the speech-to-text engine (ctranslate2)
+# has no ARM build, so on these PCs we use regular x64 Python, which Windows runs through its
+# built-in emulation. Everything else works the same.
+$IsArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') -or ($env:PROCESSOR_ARCHITEW6432 -eq 'ARM64')
+$NeedPlatform = if ($IsArm) { 'win-amd64' } else { '' }
+$X64PythonUrl = 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe'
+
 function Test-Python($exe, $pre) {
     # The Microsoft Store "python" stub prints nothing useful here, so it fails this test.
     try {
         # 3.11-3.13 only: the speech package has no builds for newer Python yet.
-        $out = & $exe @pre -c "import sys, venv; print(1 if (3, 11) <= sys.version_info[:2] <= (3, 13) else 0)" 2>$null
+        # On ARM PCs, also only x64 Python (see above).
+        $code = "import sys, venv, sysconfig; need = '$NeedPlatform'; " +
+                "print(1 if (3, 11) <= sys.version_info[:2] <= (3, 13) and (not need or sysconfig.get_platform() == need) else 0)"
+        $out = & $exe @pre -c $code 2>$null
         return ($LASTEXITCODE -eq 0 -and "$out".Trim() -eq '1')
     } catch { return $false }
 }
@@ -79,7 +89,23 @@ try {
 
     # ------------------------------------------------------------ Python
     Step "Checking Python (needs version 3.11, 3.12 or 3.13)"
+    if ($IsArm) { Write-Host "  This PC has an ARM processor: using x64 Python (Windows runs it through emulation)" }
     $py = Find-Python
+    if (-not $py -and $IsArm) {
+        Warn "Installing x64 Python 3.12 (any other Python you have stays as it is)"
+        $installer = Join-Path $env:TEMP 'python-3.12.10-amd64.exe'
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $X64PythonUrl -OutFile $installer -UseBasicParsing
+            Start-Process -FilePath $installer -Wait -ArgumentList '/quiet InstallAllUsers=0 PrependPath=0 Include_launcher=0 Include_test=0'
+        } catch {
+            Warn "Download from python.org failed ($_): trying winget instead"
+            Winget-Install 'Python.Python.3.12' @('--scope', 'user', '--architecture', 'x64', '--override',
+                '/quiet InstallAllUsers=0 PrependPath=0 Include_launcher=0 Include_pip=1')
+        }
+        $py = Find-Python
+        if (-not $py) { Fail "x64 Python didn't install. Download 'Windows installer (64-bit)' from https://www.python.org/downloads/release/python-31210/ (not the ARM64 one), install it, then run this again." }
+    }
     if (-not $py) {
         Warn "No suitable Python found: installing Python 3.12 (any other Python you have stays as it is)"
         Winget-Install 'Python.Python.3.12' @('--scope', 'user', '--override',
@@ -124,7 +150,7 @@ try {
     Step "Installing the clipper's Python packages (the slow part)"
     $vpy = Join-Path (Get-Location) '.venv\Scripts\python.exe'
     if ((Test-Path $vpy) -and -not (Test-Python $vpy @())) {
-        Warn "Rebuilding the clipper's environment with $pyVersion"
+        Warn "Rebuilding the clipper's environment with $pyVersion (this takes a few minutes)"
         Remove-Item -Recurse -Force '.venv'
     }
     if (-not (Test-Path $vpy)) {

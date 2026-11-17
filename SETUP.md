@@ -609,6 +609,7 @@ Every ✘ line comes with what to do about it.
 | `youtube chat unavailable` for one stream | That stream has chat turned off, or has ended. Others keep working |
 | `youtube chat unavailable` for every YouTube stream | YouTube changed its chat page. Get the latest version (step 13) or ask for a fix |
 | `using rule-based captions` | Not an error: no Anthropic key or credit, so captions are based on chat. Check `[anthropic]` in config and your credit balance |
+| Installer: `Couldn't install` speech-to-text, "conflicting dependencies" | Usually a Windows ARM PC (Snapdragon / Surface Pro 11 / Copilot+). Get the latest clipper and run `install.bat` again: it switches to x64 Python, which Windows runs through emulation |
 | `transcription failed` | The speech model couldn't download. Check your internet and disk space, then restart |
 | Phone clip has no word-by-word captions | Nobody spoke, or transcription failed (see above) |
 | Clips folder stays empty | Chat didn't explode enough. Wait longer, pick a busier stream, or lower `multiplier` |

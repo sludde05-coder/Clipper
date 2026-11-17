@@ -74,8 +74,13 @@ def run_checks(cfg: Config, interactive: bool = True) -> int:
                         _say(BAD, f"Download failed: {e}", "check your internet connection and disk space")
         except ImportError:
             problems += 1
-            _say(BAD, "Speech-to-text (faster-whisper) is NOT installed: the AI can't know what streamers say",
-                 f"run the installer again, or in the clipper folder run:  {PIP}")
+            import sysconfig
+            if sysconfig.get_platform() == "win-arm64":
+                _say(BAD, "Speech-to-text can't be installed with ARM Python (it has no ARM version)",
+                     "get the latest clipper and run install.bat again: it switches to x64 Python, which works")
+            else:
+                _say(BAD, "Speech-to-text (faster-whisper) is NOT installed: the AI can't know what streamers say",
+                     f"run the installer again, or in the clipper folder run:  {PIP}")
 
     # AI captions
     print()
