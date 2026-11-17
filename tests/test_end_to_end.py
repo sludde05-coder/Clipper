@@ -58,21 +58,21 @@ def test_clip_saved_with_preroll(tmp_path):
 
     sess = asyncio.run(go())
     assert sess.clips_saved == 1
-    clips = [c for c in (tmp_path / "clips").rglob("*.mp4") if not c.stem.endswith("_vertical")]
-    assert len(clips) == 1
-    # pre_roll 8 + post_roll 4, trimmed to the exact second
-    assert abs(duration(clips[0]) - 12) <= 0.25, duration(clips[0])
-    # clips/<Streamer>/<Streamer>_<date>_<time>_<n>.mp4
     import re
-    assert clips[0].parent.name == "Fake"
-    assert re.fullmatch(r"Fake_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_1\.mp4", clips[0].name), clips[0].name
-    meta = json.loads(clips[0].with_suffix(".json").read_text())
+    streamer = tmp_path / "clips" / "Fake"
+    # clips/<Streamer>/Phone clips/<Streamer>_<date>_<time>_<n>.mp4, details next door, original gone
+    phone = list((streamer / "Phone clips").glob("*.mp4"))
+    assert len(phone) == 1
+    vert = phone[0]
+    assert re.fullmatch(r"Fake_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_1\.mp4", vert.name), vert.name
+    assert list(streamer.rglob("*.mp4")) == [vert]       # the 16:9 original was deleted
+    meta = json.loads((streamer / "Captions and details" / (vert.stem + ".json")).read_text())
     assert meta["chat_rate"] > meta["normal_rate"] * 3
     assert any("OMEGALUL" in line for line in meta["chat_sample"])
     assert abs(meta["explosion_offset"] - 8) <= 0.25, meta["explosion_offset"]
-    # Phone version: 9:16, captions picked "funny" from the OMEGALUL spam.
-    vert = clips[0].with_name(clips[0].stem + "_vertical.mp4")
+    # Phone version: 9:16, 12 s (pre_roll 8 + post_roll 4), captions picked "funny" from the OMEGALUL spam.
     size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries",
                            "stream=width,height", "-of", "csv=p=0", str(vert)], capture_output=True, text=True)
     assert size.stdout.strip() == "1080,1920"
+    assert abs(duration(vert) - 12) <= 0.3, duration(vert)
     assert meta["vertical"] == vert.name and meta["captions"]["mood"] == "funny"

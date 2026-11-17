@@ -30,6 +30,7 @@ class ClipConfig:
     chat_delay: int = 0       # extra seconds to shift the clip earlier
     segment_seconds: int = 2
     quality: str = "best"
+    keep_originals: bool = False  # keep the 16:9 originals (in <Streamer>/Originals) after the phone version
 
 
 @dataclass

@@ -262,7 +262,7 @@ class Poster:
     def watch(self, interval: float = 2.0, once: bool = False) -> None:
         self.folder.mkdir(parents=True, exist_ok=True)
         self.say(f"Watching the {self.folder.resolve()} folder.")
-        self.say("Copy or drag a clip (the _vertical.mp4 one) into it and it'll be picked up.")
+        self.say("Copy or drag a clip from a streamer's 'Phone clips' folder into it and it'll be picked up.")
         self.say("Press Ctrl+C to stop.\n")
         sizes: dict[Path, int] = {}
         while True:

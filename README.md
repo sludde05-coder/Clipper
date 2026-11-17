@@ -13,7 +13,7 @@ the rankings change.
 13:14:37 INFO    🔥 twitch:kaicenat chat exploded: 412.6 msg/s vs 61.2 normal (x6.7, z=18.3)
 13:14:58 INFO    🎬 saved clips/KaiCenat/KaiCenat_2026-11-19_13-14-34_3.mp4
 13:15:21 INFO    ✍️  KaiCenat_2026-11-19_13-14-34_3.mp4: "Kai jumped the bridge in a cop car" (hype, claude, 74 words, 2 beats)
-13:15:49 INFO    📱 saved clips/KaiCenat/KaiCenat_2026-11-19_13-14-34_3_vertical.mp4
+13:15:49 INFO    📱 saved clips/KaiCenat/Phone clips/KaiCenat_2026-11-19_13-14-34_3.mp4
 ```
 
 Every clip is saved twice: the original 16:9 video, plus a **1080×1920 phone version with
@@ -29,7 +29,7 @@ captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 1. **Discovery.** Asks each platform's API for live streams of the game and keeps the top 10 by viewers.
    **English streams only** by default (`languages` in config). Twitch and Kick label each stream's language.
    YouTube often doesn't, so its titles are checked for other languages, and every clip's speech is checked
-   again: clips that are clearly in another language go to `clips/other-languages` instead.
+   again: clips that are clearly in another language go to that streamer's `Other languages` folder instead.
 2. **Rolling buffer.** For each stream, `streamlink` pipes video into `ffmpeg`, which writes 2-second
    pieces to `buffer/`. Anything older than about 2 minutes is deleted, so disk use stays small.
 3. **Chat.** Reads chat live: Twitch over anonymous IRC, Kick over its Pusher websocket, YouTube

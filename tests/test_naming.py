@@ -2,14 +2,16 @@ import json
 import re
 from datetime import datetime
 
-from clipper.naming import clip_path, commit_number, next_number, safe_name
+from clipper.naming import clip_path, commit_number, details_path, next_number, phone_path, safe_name
 from clipper.poster import find_metadata
 
 
 def test_name_format(tmp_path):
     when = datetime(2026, 11, 19, 21, 34, 12).timestamp()
     p, n = clip_path(tmp_path, "KaiCenat", when)
-    assert p == tmp_path / "KaiCenat" / "KaiCenat_2026-11-19_21-34-12_1.mp4" and n == 1
+    assert p.name == "KaiCenat_2026-11-19_21-34-12_1.mp4" and n == 1
+    assert phone_path(p) == tmp_path / "KaiCenat" / "Phone clips" / "KaiCenat_2026-11-19_21-34-12_1.mp4"
+    assert details_path(p) == tmp_path / "KaiCenat" / "Captions and details" / "KaiCenat_2026-11-19_21-34-12_1.json"
 
 
 def test_numbers_count_up_per_streamer(tmp_path):
@@ -17,9 +19,9 @@ def test_numbers_count_up_per_streamer(tmp_path):
     for i in range(1, 4):
         p, n = clip_path(tmp_path, "KaiCenat", t + i)
         assert n == i
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(b"x")
-        commit_number(p.parent, n)
+        phone_path(p).parent.mkdir(parents=True, exist_ok=True)
+        phone_path(p).write_bytes(b"x")
+        commit_number(tmp_path / "KaiCenat", n)
     assert clip_path(tmp_path, "xQc", t)[1] == 1          # other streamers start at 1
 
 

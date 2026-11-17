@@ -426,7 +426,7 @@ twitch:streamername              live      12.4    11.8     0
   🔥 twitch:streamername chat exploded: 58.2 msg/s vs 11.8 normal (x4.9, z=12.1)
   🎬 saved clips/twitch_streamername_20261117-140533.mp4
   ✍️  ... "Streamer just went CRAZY" (hype, claude, 61 words, 2 beats)
-  📱 saved clips/twitch_streamername_20261117-140533_vertical.mp4
+  📱 saved clips/streamername/Phone clips/streamername_2026-11-17_14-05-33_1.mp4
   ```
 
 Leave it running for **15–30 minutes**. A busy, reactive streamer will usually produce at least one clip.
@@ -438,7 +438,7 @@ Leave it running for **15–30 minutes**. A busy, reactive streamer will usually
 - **Windows:** `explorer clips`
 - **Mac:** `open clips`
 
-Play the `_vertical.mp4` clip. Check that it starts before the moment that set chat off, and that the captions look right.
+Play the clip in the streamer's `Phone clips` folder. Check that it starts before the moment that set chat off, and that the captions look right.
 
 ✅ If you got a clip, **you're ready for release day.**
 
@@ -481,24 +481,35 @@ starting new streams that climb into the top 10 and dropping ones that fall out.
 
 ## 10. Your clips (and posting them)
 
-Everything goes into the `clips` folder. Each clip has three files:
+Everything goes into the `clips` folder, with a folder per streamer:
 
-| File | What it is |
-|---|---|
-| `KaiCenat_2026-11-19_21-34-12_3.mp4` | The original 16:9 clip, 30 s long: 22 s before chat explodes and 8 s after |
-| `KaiCenat_2026-11-19_21-34-12_3_vertical.mp4` | **The phone version** (1080×1920) with captions. Post this one |
-| `KaiCenat_2026-11-19_21-34-12_3.json` | Details: chat speed, what chat said, the transcript, and **`post_caption`**, a ready-made caption with hashtags to copy |
-
-Each streamer gets their own folder in `clips`. Names are **streamer, date, time, clip number**: `KaiCenat_2026-11-19_21-34-12_3` is KaiCenat's 3rd clip, from when chat exploded at 21:34:12 on 19 November. The number keeps counting across days and restarts. `clips/index.jsonl` lists every clip in order.
-
-Want the phone version in the other layout (full-screen crop instead of a blurred background)?
-
-```bash
-python -m clipper render clips/KaiCenat/KaiCenat_2026-11-19_21-34-12_3.mp4 --layout crop
+```
+clips/
+  KaiCenat/
+    Phone clips/
+      KaiCenat_2026-11-19_21-34-12_1.mp4
+      KaiCenat_2026-11-19_22-05-40_2.mp4
+    Captions and details/
+      KaiCenat_2026-11-19_21-34-12_1.json
+      KaiCenat_2026-11-19_22-05-40_2.json
+  xQc/
+    ...
 ```
 
-**`clips/other-languages`** holds clips where the streamer clearly speaks another language, in case one
-slipped past the English-only filter. They get no phone version. Delete them or keep them, as you like.
+| Folder | What's in it |
+|---|---|
+| `Phone clips` | **The clips to post:** 30 s (22 s before chat explodes, 8 s after), 1080×1920, with captions |
+| `Captions and details` | One `.json` per clip: the caption plan, **`post_caption`** (a ready-made caption with hashtags), chat speed, what chat said and the transcript |
+
+Names are **streamer, date, time, clip number**: `KaiCenat_2026-11-19_21-34-12_3` is KaiCenat's 3rd clip, from when chat
+exploded at 21:34:12 on 19 November. The number keeps counting across days and restarts. `clips/index.jsonl` lists
+every clip in order.
+
+The 16:9 original is **deleted once the phone clip is made**. These folders can also appear:
+- **`Not converted`**: the phone version couldn't be made, so the original is kept here.
+- **`Other languages`**: the streamer clearly spoke another language. These get no phone version.
+- **`Originals`**: only if you set `keep_originals = true` under `[clips]` in `config.toml`.
+- **`.work`**: clips being processed right now. Leave it alone.
 
 The `buffer` folder is temporary video the app deletes as it goes. You can ignore it.
 
@@ -520,7 +531,7 @@ to `POST/posted` on your PC when you're done.
    - **Android** (Chrome): tap **⋮** → **Add to Home screen** (or **Install app**).
 
 **Posting a clip:**
-1. On the PC, copy a clip (the `_vertical.mp4` one) into the `POST` folder. The app shows it within a few seconds.
+1. On the PC, copy a clip from a streamer's `Phone clips` folder into the `POST` folder. The app shows it within a few seconds.
    The app works whenever the clipper is clipping (options 1, 3, 4) or while option 8 is open.
 2. In the app, tap the clip. For each platform you get:
    - **Share to TikTok/Instagram/YouTube** (or **Save video**, see below): puts the video into the app.
@@ -550,7 +561,7 @@ secure https address that works on mobile data too, and the one-tap Share button
 ### Posting your clips on the PC
 
 1. Open the clipper menu and choose **7**. A `POST` folder opens (it's inside your clipper folder).
-2. Copy a clip you like into it: the **`_vertical.mp4`** one from `clips`. Leave that window open.
+2. Copy a clip you like into it, from a streamer's **`Phone clips`** folder. Leave that window open.
 3. The clipper picks it up within a few seconds and goes through **TikTok, YouTube Shorts and Instagram Reels** one at a time:
    - It opens the platform's upload page in your browser, and a folder window with the clip selected.
    - **Drag the clip** from the folder window onto the upload page.

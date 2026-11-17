@@ -30,6 +30,7 @@ post_roll = 8           # seconds kept after it (22 + 8 = a 30-second clip)
 chat_delay = 0          # raise if clips start too late (stream delay)
 segment_seconds = 2
 quality = "best"        # or "720p", "480p" to save disk/bandwidth
+keep_originals = false  # true keeps the 16:9 originals (in <Streamer>/Originals) after the phone version
 
 [twitch]   # https://dev.twitch.tv/console/apps  → Register, "Confidential"
 client_id = ""

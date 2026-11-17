@@ -96,30 +96,31 @@ def wrong_language(tr: Transcript, languages: list[str] | None) -> bool:
                 and tr.language_probability >= 0.8 and tr.language not in languages)
 
 
-def set_aside(clip: Path) -> Path:
-    dest = clip.parent / "other-languages"
-    dest.mkdir(exist_ok=True)
-    for f in (clip, clip.with_suffix(".json")):
+def set_aside(clip: Path, meta_path: Path | None = None, dest: Path | None = None) -> Path:
+    dest = dest or clip.parent / "other-languages"
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in (clip, meta_path or clip.with_suffix(".json")):
         if f.exists():
             f.replace(dest / f.name)
     return dest
 
 
 async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
-                          languages: list[str] | None = None, recent_dir: Path | None = None) -> Path | None:
+                          languages: list[str] | None = None, recent_dir: Path | None = None,
+                          meta_path: Path | None = None, aside_dir: Path | None = None) -> Path | None:
     """Make <clip>_vertical.mp4 next to the clip and add the caption plan to its .json."""
     global _slots
     if _slots is None:
         _slots = asyncio.Semaphore(max(1, cfg.max_parallel))
     async with _slots:  # transcription + encoding are CPU heavy; don't run 10 at once
-        meta_path = clip.with_suffix(".json")
+        meta_path = meta_path or clip.with_suffix(".json")
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
         length = await asyncio.to_thread(probe_duration, clip)
 
         tr = await asyncio.to_thread(transcribe, clip, cfg.whisper_model) if cfg.speech_captions else Transcript([])
         words = tr.words
         if wrong_language(tr, languages):
-            moved = set_aside(clip)
+            moved = set_aside(clip, meta_path, aside_dir)
             log.info("🌐 %s is in %s, not %s: moved to %s", clip.name, tr.language, "/".join(languages or []), moved)
             return None
         plan: Plan | None = None
@@ -131,6 +132,7 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
                  plan.source, len(words), len(plan.beats))
 
         out = out or clip.with_name(clip.stem + "_vertical.mp4")
+        out.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "captions.ass").write_text(
                 build_ass(plan, words, length, cfg.layout, cfg.font), encoding="utf-8")

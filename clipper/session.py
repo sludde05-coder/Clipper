@@ -17,6 +17,7 @@ from .config import Config
 from .detector import Spike, SpikeDetector
 from .models import ChatMessage, Stream
 from .recorder import Recorder
+from . import naming
 from .naming import clip_path, commit_number
 from .vertical import render_vertical
 
@@ -98,7 +99,9 @@ class ChannelSession:
         actual_start = await self.recorder.save_clip(start, end, out)
         if actual_start is None:
             return
-        commit_number(out.parent, number)
+        commit_number(naming.streamer_dir(out), number)
+        details = naming.details_path(out)
+        details.parent.mkdir(parents=True, exist_ok=True)
         self.clips_saved += 1
         window = [m for m in self.recent if spike.onset - 5 <= m.ts <= spike.detected_at + 10]
         timeline = [[round(m.ts - actual_start, 1), m.user, m.text]
@@ -107,7 +110,7 @@ class ChannelSession:
             "platform": self.stream.platform, "channel": self.stream.channel,
             "name": self.stream.display_name or self.stream.channel, "url": self.stream.url,
             "title": self.stream.title, "clip": out.name, "clip_number": number,
-            "folder": out.parent.name,
+            "folder": naming.streamer_dir(out).name,
             "explosion_at": datetime.fromtimestamp(spike.onset).isoformat(timespec="seconds"),
             "clip_start": datetime.fromtimestamp(start).isoformat(timespec="seconds"),
             "clip_end": datetime.fromtimestamp(end).isoformat(timespec="seconds"),
@@ -117,11 +120,24 @@ class ChannelSession:
             "chat_sample": [f"{m.user}: {m.text}" for m in window[:40]],
             "chat_timeline": timeline[-400:],
         }
-        out.with_suffix(".json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+        details.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
         with open(Path(c.output_dir) / "index.jsonl", "a") as f:
             f.write(json.dumps({k: v for k, v in meta.items() if k not in ("chat_sample", "chat_timeline")},
                                ensure_ascii=False) + "\n")
-        log.info("🎬 saved %s", out)
-        if self.cfg.vertical.enabled:
-            await render_vertical(out, self.cfg.vertical, languages=self.cfg.discovery.languages,
-                                  recent_dir=Path(c.output_dir))
+        log.info("🎬 clip saved: %s", out.name)
+        folder = naming.streamer_dir(out)
+        if not self.cfg.vertical.enabled:
+            naming.move_into(out, folder / naming.ORIGINALS)
+            return
+        phone = await render_vertical(out, self.cfg.vertical, out=naming.phone_path(out),
+                                      languages=self.cfg.discovery.languages, recent_dir=Path(c.output_dir),
+                                      meta_path=details, aside_dir=folder / naming.OTHER_LANGUAGES)
+        if not out.exists():
+            return  # set aside (another language)
+        if phone is None:
+            kept = naming.move_into(out, folder / naming.NOT_CONVERTED)
+            log.warning("kept the original in %s, since the phone version couldn't be made", kept.parent)
+        elif c.keep_originals:
+            naming.move_into(out, folder / naming.ORIGINALS)
+        else:
+            out.unlink(missing_ok=True)  # the phone version is the clip now
