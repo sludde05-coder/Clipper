@@ -61,5 +61,11 @@ folder = "POST"
 platforms = ["tiktok", "youtube", "instagram"]
 credit = true           # name the streamer and platform in every caption
 
+[phone]                 # the phone app for posting clips from the POST folder (menu option 8)
+enabled = true
+port = 8765
+key = ""                # filled in automatically: the secret in the QR code
+public_url = ""         # optional: a Tailscale https:// address for posting away from home
+
 [anthropic]  # optional: https://console.anthropic.com → API Keys. Lets Claude write the captions.
 api_key = ""

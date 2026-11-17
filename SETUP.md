@@ -36,9 +36,10 @@ More detail on each key is in [step 6](#6-get-your-api-keys) below. Skipped one?
   4) Test on a game that's live right now
   5) Open the clips folder
   6) Set up or change API keys
-  7) Post clips (drop them in the POST folder)
-  8) Check that everything works
-  9) Quit
+  7) Post clips on this PC (drop them in the POST folder)
+  8) Phone app: post clips from your phone
+  9) Check that everything works
+ 10) Quit
 ```
 
 Type a number and press Enter. **Ctrl+C** stops clipping and takes you back to the menu.
@@ -503,7 +504,50 @@ The `buffer` folder is temporary video the app deletes as it goes. You can ignor
 
 ---
 
-### Posting your clips
+### Posting from your phone (the phone app)
+
+The phone app shows the clips in your `POST` folder on your phone. You post them from the phone, and they move
+to `POST/posted` on your PC when you're done.
+
+**Connect your phone (once):**
+1. On your PC, open the clipper menu and choose **8) Phone app**. A page with a **QR code** opens.
+2. **Windows asks whether Python may use networks:** tick **Private networks** and click **Allow**.
+   Without this, the phone can't connect.
+3. Make sure your phone is on the **same Wi-Fi** as your PC. Open the phone's **camera**, point it at the
+   QR code, and tap the link.
+4. Add it to your home screen so it opens like an app:
+   - **iPhone** (Safari): tap Share **⬆︎** → **Add to Home Screen** → Add.
+   - **Android** (Chrome): tap **⋮** → **Add to Home screen** (or **Install app**).
+
+**Posting a clip:**
+1. On the PC, copy a clip (the `_vertical.mp4` one) into the `POST` folder. The app shows it within a few seconds.
+   The app works whenever the clipper is clipping (options 1, 3, 4) or while option 8 is open.
+2. In the app, tap the clip. For each platform you get:
+   - **Share to TikTok/Instagram/YouTube** (or **Save video**, see below): puts the video into the app.
+   - **Copy caption** (YouTube: **Copy title** and **Copy description**), written for that platform.
+     Sharing copies the caption automatically, so you just paste it.
+   - **Mark as posted** once it's up.
+3. Tap **Done: move to Posted**. The clip moves to `POST/posted` on your PC, and the log notes where it went.
+
+**"Share" or "Save video"?** Phones only allow sharing a video straight into another app from a secure (https)
+connection. At home over Wi-Fi the app uses plain http, so you'll usually see **Save video**:
+- **Android:** the video goes to Downloads. In TikTok, Instagram or YouTube, tap + and pick it.
+- **iPhone:** the video goes to the **Files** app. Open it there, tap Share → **Save Video** (now it's in Photos),
+  then pick it in TikTok, Instagram or YouTube.
+
+For one-tap **Share** buttons, and to post when you're away from home, see "Posting from anywhere" below.
+
+**Posting from anywhere (optional):** with the free app **Tailscale** on your PC and phone, the phone app gets a
+secure https address that works on mobile data too, and the one-tap Share buttons appear.
+1. Install Tailscale on the PC and the phone ([tailscale.com/download](https://tailscale.com/download)) and log in
+   with the same account on both.
+2. In the Tailscale admin page (login.tailscale.com → **DNS**), turn on **HTTPS Certificates**.
+3. On the PC, open a terminal and run: `tailscale serve --bg 8765`. It prints an address like
+   `https://your-pc.tail1234.ts.net`.
+4. Put that address in `config.toml` under `[phone]`: `public_url = "https://your-pc.tail1234.ts.net"`.
+5. Choose **8) Phone app** again and scan the new QR code (add it to your home screen again too).
+
+### Posting your clips on the PC
 
 1. Open the clipper menu and choose **7**. A `POST` folder opens (it's inside your clipper folder).
 2. Copy a clip you like into it: the **`_vertical.mp4`** one from `clips`. Leave that window open.
@@ -546,7 +590,7 @@ All settings are in `config.toml`. Open it, change a value, save, then stop (Ctr
 
 ## 12. Troubleshooting
 
-**Start with the check:** open the clipper menu and choose **8) Check that everything works**. It tests
+**Start with the check:** open the clipper menu and choose **9) Check that everything works**. It tests
 Python, ffmpeg, the video downloader, speech-to-text (and offers to download its model), your AI key and your
 stream keys. It also tells you whether your last few clips actually got AI captions and speech-to-text.
 Every ✘ line comes with what to do about it.

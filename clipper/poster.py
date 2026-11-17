@@ -186,6 +186,19 @@ def ready_clips(folder: Path, sizes: dict[Path, int]) -> list[Path]:
     return ready
 
 
+def move_to_posted(folder: Path, clip: Path, results: dict[str, str], caption_file: Path | None = None) -> Path:
+    """Move a clip (and its caption .txt) into POST/posted and log what was posted where."""
+    done = folder / "posted"
+    done.mkdir(parents=True, exist_ok=True)
+    for f in (clip, caption_file or clip.with_suffix(".txt")):
+        if f.exists():
+            f.replace(done / f.name)
+    with open(done / "log.jsonl", "a", encoding="utf-8") as log:
+        log.write(json.dumps({"clip": clip.name, "at": datetime.now().isoformat(timespec="seconds"),
+                              **results}) + "\n")
+    return done
+
+
 class Poster:
     def __init__(self, cfg: PostConfig, clips_dir: Path, *,
                  ask: Callable[[str], str] = input, clipboard=copy_to_clipboard,
@@ -237,13 +250,7 @@ class Poster:
             answer = self._wait("Press Enter when it's posted (or type s if you skipped it):")
             results[t.key] = "skipped" if answer == "s" else "posted"
 
-        self.done_dir.mkdir(parents=True, exist_ok=True)
-        for f in (clip, caption_file):
-            if f.exists():
-                f.replace(self.done_dir / f.name)
-        with open(self.done_dir / "log.jsonl", "a", encoding="utf-8") as log:
-            log.write(json.dumps({"clip": clip.name, "at": datetime.now().isoformat(timespec="seconds"),
-                                  **results}) + "\n")
+        move_to_posted(self.folder, clip, results, caption_file)
         posted = [TARGETS[k].name for k, v in results.items() if v == "posted"]
         self.say(f"\n✅ Done with {clip.name}: posted to {', '.join(posted) or 'nothing'}. "
                  f"Moved to {self.done_dir.name}/ (captions saved next to it as a .txt).")

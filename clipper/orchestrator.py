@@ -16,9 +16,20 @@ log = logging.getLogger(__name__)
 class Orchestrator:
     """Keeps one ChannelSession per tracked stream and swaps them as rankings change."""
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, config_path: str | None = None):
         self.cfg = cfg
+        self.config_path = config_path
         self.sessions: dict[str, ChannelSession] = {}
+
+    async def _start_phone(self) -> None:
+        if not self.cfg.phone.enabled:
+            return
+        try:
+            from .phone import PhoneServer
+            if not await PhoneServer(self.cfg, self.config_path).start():
+                log.info("📱 Phone app is already running in another window (port %s)", self.cfg.phone.port)
+        except Exception as e:  # noqa: BLE001 - never let the phone app stop the clipping
+            log.warning("📱 Phone app couldn't start: %s", e)
 
     async def _sync(self, wanted: list[Stream], http: aiohttp.ClientSession) -> None:
         keys = {s.key for s in wanted}
@@ -49,6 +60,7 @@ class Orchestrator:
         log.info("status\n  %s", "\n  ".join(lines))
 
     async def run_discovery(self) -> None:
+        await self._start_phone()
         async with aiohttp.ClientSession(trust_env=True) as http:
             disc = Discovery(self.cfg, http)
             status_every, since_status = 30, 0
@@ -70,6 +82,7 @@ class Orchestrator:
                         since_status = 0
 
     async def run_fixed(self, streams: list[Stream]) -> None:
+        await self._start_phone()
         async with aiohttp.ClientSession(trust_env=True) as http:
             await self._sync(streams, http)
             while True:

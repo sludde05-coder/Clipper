@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clipper</title>
+<link rel="manifest" href="{{MANIFEST}}">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Clipper">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1115">
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b22; --card2: #20242d; --line: #2a2f3a;
+    --text: #f2f4f8; --muted: #9aa3b2; --accent: #7c5cff; --accent2: #9b82ff;
+    --ok: #2ecc71; --warn: #f5a623;
+    --tiktok: #fe2c55; --youtube: #ff0033; --instagram: #d62976;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  body { padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 0 10px; position: sticky; top: 0;
+    background: var(--bg); z-index: 5; }
+  header h1 { font-size: 22px; margin: 0; flex: 1; letter-spacing: -0.02em; }
+  .iconbtn { background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 12px;
+    height: 40px; min-width: 40px; padding: 0 12px; font-size: 15px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  .list { display: grid; gap: 12px; }
+  .clip { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 10px; text-align: left; color: inherit; width: 100%; font: inherit; }
+  .clip img { width: 74px; height: 132px; object-fit: cover; border-radius: 10px; background: #000; flex: none; }
+  .clip .info { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .clip .hook { font-weight: 650; font-size: 16px; }
+  .clip .who { color: var(--muted); font-size: 14px; }
+  .dots { display: flex; gap: 6px; margin-top: auto; flex-wrap: wrap; }
+  .dot { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--card2); color: var(--muted); }
+  .dot.done { background: rgba(46, 204, 113, .15); color: var(--ok); }
+
+  .empty, .error { text-align: center; padding: 48px 12px; color: var(--muted); }
+  .empty b, .error b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
+
+  .player { width: 100%; max-height: 62vh; background: #000; border-radius: 16px; display: block; }
+  .title { font-size: 19px; font-weight: 700; margin: 14px 0 2px; }
+  .platform { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px;
+    margin-top: 12px; }
+  .platform h2 { margin: 0 0 10px; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .platform h2 .badge { width: 10px; height: 10px; border-radius: 50%; }
+  .platform h2 .state { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .platform.posted { border-color: rgba(46, 204, 113, .5); }
+  .platform.posted h2 .state { color: var(--ok); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn { flex: 1 1 140px; min-height: 46px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--text); font: inherit; font-weight: 600; padding: 10px 12px;
+    text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:disabled { opacity: .55; }
+  .btn.good { background: rgba(46, 204, 113, .15); border-color: rgba(46, 204, 113, .5); color: var(--ok); }
+  .caption { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+    margin: 10px 0; white-space: pre-wrap; font-size: 14px; color: #d7dbe3; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 10px; }
+  .steps { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+  .steps li { margin: 3px 0; }
+  .finish { margin-top: 18px; }
+  .finish .btn { width: 100%; min-height: 54px; font-size: 17px; }
+  .note { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+    font-size: 13px; color: var(--muted); margin-top: 12px; }
+
+  .toast { position: fixed; left: 16px; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom));
+    background: #2b3040; color: var(--text); padding: 12px 14px; border-radius: 12px; font-size: 15px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4); opacity: 0; transform: translateY(10px); transition: .2s;
+    pointer-events: none; z-index: 20; }
+  .toast.show { opacity: 1; transform: none; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <button class="iconbtn" id="back" hidden aria-label="Back">‹ Back</button>
+  <h1 id="heading">Clips to post</h1>
+  <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
+</header>
+
+<main id="view"></main>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  let KEY = qs.get("k") || "";
+  try {
+    if (KEY) localStorage.setItem("clipper-key", KEY); else KEY = localStorage.getItem("clipper-key") || "";
+  } catch (e) {}
+
+  const view = document.getElementById("view");
+  const heading = document.getElementById("heading");
+  const backBtn = document.getElementById("back");
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const canShareFiles = (() => {
+    try { return !!(navigator.canShare && navigator.canShare({ files: [new File([""], "x.mp4", { type: "video/mp4" })] })); }
+    catch (e) { return false; }
+  })();
+
+  const STEPS = {
+    tiktok: ["Open TikTok and tap +", "Tap Upload and pick the video", "Tap Next, paste the caption", "Tap Post"],
+    youtube: ["Open YouTube and tap +", "Pick the video (vertical clips become Shorts)",
+              "Paste the title into the caption/title box", "Paste the description if there's a box for it, then Upload"],
+    instagram: ["Open Instagram, tap + and choose Reel", "Pick the video, tap Next",
+                "Paste the caption", "Tap Share"],
+  };
+  const COLORS = { tiktok: "var(--tiktok)", youtube: "var(--youtube)", instagram: "var(--instagram)" };
+
+  let clips = [];
+  let current = null;       // the clip open in the detail view
+  let fileCache = {};       // name -> File, fetched ahead so Share opens instantly
+  let timer = null;
+
+  // ---------------------------------------------------------------- helpers
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function toast(msg, ms = 2600) {
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms);
+  }
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Clipper-Key": KEY } });
+    if (r.status === 403) throw Object.assign(new Error("key"), { kind: "key" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+    } catch (e) {}
+    // Fallback that works on plain http:// pages too.
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.top = "-1000px"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) {}
+    ta.remove();
+    return ok;
+  }
+
+  function postedState(name) {
+    try { return JSON.parse(localStorage.getItem("posted:" + name) || "{}"); } catch (e) { return {}; }
+  }
+  function setPosted(name, key, value) {
+    const s = postedState(name); s[key] = value;
+    try { localStorage.setItem("posted:" + name, JSON.stringify(s)); } catch (e) {}
+  }
+
+  // ---------------------------------------------------------------- list view
+  async function showList() {
+    current = null;
+    heading.textContent = "Clips to post";
+    backBtn.hidden = true;
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+    if (!KEY) {
+      view.innerHTML = `<div class="error"><b>Connect to your PC</b>On your PC, open the clipper menu and choose
+        <b style="display:inline;font-size:inherit">8) Phone app</b>, then scan the QR code with this phone's camera.</div>`;
+      return;
+    }
+    try {
+      clips = (await api("/api/clips")).clips;
+    } catch (e) {
+      view.innerHTML = e.kind === "key"
+        ? `<div class="error"><b>Scan the QR code again</b>The key doesn't match this PC anymore. On your PC: clipper menu → 8) Phone app.</div>`
+        : `<div class="error"><b>Can't reach your PC</b>Make sure the clipper is running on your PC and this phone
+           is on the same Wi-Fi. If your PC restarted, its address may have changed: scan the QR code again.</div>`;
+      return;
+    }
+    if (!clips.length) {
+      view.innerHTML = `<div class="empty"><b>Nothing to post yet</b>Copy clips into the <b style="display:inline;font-size:inherit">POST</b>
+        folder on your PC (the <i>_vertical.mp4</i> ones). They show up here within a few seconds.</div>`;
+      return;
+    }
+    view.innerHTML = `<div class="list">${clips.map((c, i) => {
+      const st = postedState(c.name);
+      return `<button class="clip" data-i="${i}">
+        <img src="${esc(c.thumb)}" alt="" loading="lazy">
+        <div class="info">
+          <div class="hook">${esc(c.hook || c.name.replace(/_vertical\.\w+$/, "").replace(/[_-]+/g, " "))}</div>
+          <div class="who">${esc(c.streamer)}${c.source ? " · " + esc(c.source) : ""}</div>
+          <div class="dots">${c.platforms.map(p => `<span class="dot ${st[p.key] ? "done" : ""}">${st[p.key] ? "✓ " : ""}${esc(p.name.split(" ")[0])}</span>`).join("")}</div>
+        </div></button>`;
+    }).join("")}</div>`;
+    view.querySelectorAll(".clip").forEach(b => b.onclick = () => openClip(clips[+b.dataset.i]));
+  }
+
+  // ---------------------------------------------------------------- detail view
+  function openClip(c) {
+    current = c;
+    heading.textContent = c.streamer || "Clip";
+    backBtn.hidden = false;
+    history.pushState({ clip: c.name }, "", "#clip");
+    const st = postedState(c.name);
+
+    const saveHint = isIOS
+      ? "On iPhone the video is saved to the Files app: open it there, tap Share → Save Video, then pick it in the app."
+      : "The video is saved to your phone's Downloads, and the apps can pick it from there.";
+
+    view.innerHTML = `
+      <video class="player" src="${esc(c.video)}" controls playsinline preload="metadata" poster="${esc(c.thumb)}"></video>
+      ${c.hook ? `<div class="title">${esc(c.hook)}</div>` : ""}
+      <div class="muted small">${esc(c.name)} · ${c.size_mb} MB</div>
+      ${c.platforms.map(p => `
+        <section class="platform ${st[p.key] ? "posted" : ""}" data-p="${p.key}">
+          <h2><span class="badge" style="background:${COLORS[p.key] || "var(--accent)"}"></span>${esc(p.name)}
+              <span class="state">${st[p.key] ? "Posted ✓" : "Not posted"}</span></h2>
+          <div class="row">
+            ${canShareFiles
+              ? `<button class="btn primary" data-act="share">Share to ${esc(p.name.split(" ")[0])}</button>`
+              : `<a class="btn primary" data-act="save" href="${esc(c.download)}" download="${esc(c.name)}">Save video</a>`}
+          </div>
+          ${p.key === "youtube" ? `
+            <div class="label">Title</div><div class="caption">${esc(p.title)}</div>
+            <div class="row"><button class="btn" data-act="copy" data-field="title">Copy title</button></div>
+            <div class="label">Description</div><div class="caption">${esc(p.description)}</div>
+            <div class="row"><button class="btn" data-act="copy" data-field="description">Copy description</button></div>`
+          : `
+            <div class="caption">${esc(p.caption)}</div>
+            <div class="row"><button class="btn" data-act="copy" data-field="caption">Copy caption</button></div>`}
+          <ol class="steps">${(STEPS[p.key] || []).map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+          <div class="row" style="margin-top:10px">
+            <button class="btn ${st[p.key] ? "good" : ""}" data-act="mark">${st[p.key] ? "✓ Posted" : "Mark as posted"}</button>
+          </div>
+        </section>`).join("")}
+      ${canShareFiles ? "" : `<div class="note">${esc(saveHint)}</div>`}
+      <div class="finish"><button class="btn primary" id="done">Done: move to Posted</button></div>`;
+
+    view.querySelectorAll(".platform").forEach(sec => {
+      const p = c.platforms.find(x => x.key === sec.dataset.p);
+      sec.querySelectorAll("[data-act]").forEach(btn => {
+        btn.onclick = async (ev) => {
+          const act = btn.dataset.act;
+          if (act === "copy") {
+            const ok = await copyText(p[btn.dataset.field]);
+            toast(ok ? "Copied. Paste it in " + p.name.split(" ")[0] : "Couldn't copy: press and hold the text to copy it");
+          } else if (act === "share") {
+            await share(c, p, btn);
+          } else if (act === "save") {
+            // Let the link download; copy the caption at the same time.
+            const text = p.key === "youtube" ? p.title : p.caption;
+            copyText(text).then(ok => ok && toast("Saving the video. " + (p.key === "youtube" ? "Title" : "Caption") + " copied too."));
+          } else if (act === "mark") {
+            const now = !postedState(c.name)[p.key];
+            setPosted(c.name, p.key, now);
+            sec.classList.toggle("posted", now);
+            sec.querySelector(".state").textContent = now ? "Posted ✓" : "Not posted";
+            btn.textContent = now ? "✓ Posted" : "Mark as posted";
+            btn.classList.toggle("good", now);
+          }
+        };
+      });
+    });
+    document.getElementById("done").onclick = () => finish(c);
+
+    if (canShareFiles) prefetch(c);
+  }
+
+  async function prefetch(c) {
+    if (fileCache[c.name]) return;
+    const buttons = () => view.querySelectorAll('[data-act="share"]');
+    buttons().forEach(b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "Getting video…"; });
+    try {
+      const r = await fetch(c.video);
+      const blob = await r.blob();
+      fileCache = { [c.name]: new File([blob], c.name, { type: blob.type || "video/mp4" }) };
+    } catch (e) {
+      toast("Couldn't load the video from your PC");
+    }
+    if (current && current.name === c.name) {
+      buttons().forEach(b => { b.disabled = false; b.textContent = b.dataset.label; });
+    }
+  }
+
+  async function share(c, p, btn) {
+    const file = fileCache[c.name];
+    if (!file) { toast("Still getting the video, one moment…"); return; }
+    // Copy the caption first: most apps ignore text passed along with a video.
+    const text = p.key === "youtube" ? p.title : p.caption;
+    const copied = await copyText(text);
+    try {
+      await navigator.share({ files: [file] });
+      toast((copied ? (p.key === "youtube" ? "Title" : "Caption") + " is copied: paste it in " : "Paste the caption in ")
+            + p.name.split(" ")[0] + ", then tap Mark as posted", 4500);
+    } catch (e) {
+      if (e && e.name !== "AbortError") toast("Sharing didn't work: try Save video instead");
+    }
+  }
+
+  async function finish(c) {
+    const st = postedState(c.name);
+    const results = {};
+    c.platforms.forEach(p => results[p.key] = st[p.key] ? "posted" : "skipped");
+    if (!Object.values(results).includes("posted") &&
+        !confirm("You haven't marked it as posted anywhere. Move it to Posted anyway?")) return;
+    try {
+      await api("/api/clips/" + encodeURIComponent(c.name) + "/done", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(results) });
+      try { localStorage.removeItem("posted:" + c.name); } catch (e) {}
+      delete fileCache[c.name];
+      toast("Moved to Posted ✓");
+      showList();
+    } catch (e) {
+      toast("Couldn't reach your PC. Try again.");
+    }
+  }
+
+  // ---------------------------------------------------------------- wiring
+  backBtn.onclick = () => history.back();
+  window.onpopstate = () => { if (current) showList(); };
+  document.getElementById("refresh").onclick = () => current ? openClip(current) : showList();
+  // Pick up new clips by themselves while the list is showing.
+  timer = setInterval(() => { if (!current && document.visibilityState === "visible") showList(); }, 8000);
+  document.addEventListener("visibilitychange", () => { if (!current && document.visibilityState === "visible") showList(); });
+  showList();
+})();
+</script>
+</body>
+</html>

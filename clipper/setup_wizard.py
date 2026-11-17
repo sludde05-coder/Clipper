@@ -259,9 +259,10 @@ MENU = """
   4) Test on a game that's live right now
   5) Open the clips folder
   6) Set up or change API keys
-  7) Post clips (drop them in the POST folder)
-  8) Check that everything works
-  9) Quit
+  7) Post clips on this PC (drop them in the POST folder)
+  8) Phone app: post clips from your phone
+  9) Check that everything works
+ 10) Quit
 """
 
 
@@ -320,8 +321,11 @@ def run_menu() -> None:
                 open_folder(Path("POST"))
                 _run("post")
             elif choice == "8":
+                print("\nThe phone app also runs by itself whenever the clipper is clipping (options 1, 3, 4).")
+                _run("phone")
+            elif choice == "9":
                 _run("check")
-            elif choice in ("9", "q", "quit", "exit"):
+            elif choice in ("10", "q", "quit", "exit"):
                 return
         except KeyboardInterrupt:
             print("\nStopped.")

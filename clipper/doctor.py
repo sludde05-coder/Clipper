@@ -43,6 +43,13 @@ def run_checks(cfg: Config, interactive: bool = True) -> int:
         problems += 1
         _say(BAD, "streamlink not installed", "run the installer again")
 
+    try:
+        import qrcode  # noqa: F401
+        _say(OK, "Phone app parts installed")
+    except ImportError:
+        problems += 1
+        _say(BAD, "Phone app parts missing (the QR code can't be shown)", "run the installer again")
+
     # Speech-to-text
     print()
     vc = cfg.vertical

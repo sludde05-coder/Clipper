@@ -54,6 +54,14 @@ class PostConfig:
 
 
 @dataclass
+class PhoneConfig:
+    enabled: bool = True            # serve the phone app while the clipper runs
+    port: int = 8765
+    key: str = ""                   # secret in the QR code; made automatically on first start
+    public_url: str = ""            # optional, e.g. a Tailscale https:// address (see SETUP.md)
+
+
+@dataclass
 class Credentials:
     twitch_client_id: str = ""
     twitch_client_secret: str = ""
@@ -72,6 +80,7 @@ class Config:
     clips: ClipConfig = field(default_factory=ClipConfig)
     vertical: VerticalConfig = field(default_factory=VerticalConfig)
     post: PostConfig = field(default_factory=PostConfig)
+    phone: PhoneConfig = field(default_factory=PhoneConfig)
     creds: Credentials = field(default_factory=Credentials)
 
 
@@ -92,6 +101,7 @@ def load_config(path: str | None) -> Config:
         _fill(cfg.clips, data.get("clips", {}))
         _fill(cfg.vertical, data.get("vertical", {}))
         _fill(cfg.post, data.get("post", {}))
+        _fill(cfg.phone, data.get("phone", {}))
         for platform in ("twitch", "youtube", "kick"):
             _fill(cfg.creds, data.get(platform, {}), prefix=platform + "_")
         # The Anthropic SDK reads its key from the environment; let the file supply it.

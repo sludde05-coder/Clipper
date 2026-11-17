@@ -88,6 +88,14 @@ hashtags (`#shorts` for YouTube, a separate title, and so on). You paste and pre
 `POST/posted` with their captions saved in a `.txt` file. It doesn't upload on its own: platforms keep uploads
 from unapproved apps private, and automating their websites gets accounts banned.
 
+## Phone app
+
+The clipper also serves a small **phone app** over your home Wi-Fi (menu option 8 shows a QR code to connect,
+then add it to your home screen). It lists the clips in `POST`, plays them, and for each platform gives you
+**Share/Save video**, **Copy caption** and **Mark as posted**. **Done** moves the clip to `POST/posted` on the PC.
+A secret key in the QR code keeps other people on the network out. With Tailscale (optional, see SETUP.md) it
+works away from home too, with one-tap sharing into TikTok, Instagram and YouTube.
+
 ## Setup
 
 You need Python **3.11–3.13** (the speech-to-text package doesn't support newer Python yet) and **ffmpeg** (`brew install ffmpeg`, `winget install ffmpeg`, `apt install ffmpeg`).
