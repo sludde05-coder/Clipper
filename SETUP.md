@@ -485,16 +485,16 @@ Everything goes into the `clips` folder. Each clip has three files:
 
 | File | What it is |
 |---|---|
-| `twitch_name_20261119-131434.mp4` | The original 16:9 clip, 30 s long: 22 s before chat explodes and 8 s after |
-| `twitch_name_20261119-131434_vertical.mp4` | **The phone version** (1080×1920) with captions. Post this one |
-| `twitch_name_20261119-131434.json` | Details: chat speed, what chat said, the transcript, and **`post_caption`**, a ready-made caption with hashtags to copy |
+| `KaiCenat_2026-11-19_21-34-12_3.mp4` | The original 16:9 clip, 30 s long: 22 s before chat explodes and 8 s after |
+| `KaiCenat_2026-11-19_21-34-12_3_vertical.mp4` | **The phone version** (1080×1920) with captions. Post this one |
+| `KaiCenat_2026-11-19_21-34-12_3.json` | Details: chat speed, what chat said, the transcript, and **`post_caption`**, a ready-made caption with hashtags to copy |
 
-The name is `platform_streamer_date-time` (time of the explosion). `clips/index.jsonl` lists every clip in order.
+Each streamer gets their own folder in `clips`. Names are **streamer, date, time, clip number**: `KaiCenat_2026-11-19_21-34-12_3` is KaiCenat's 3rd clip, from when chat exploded at 21:34:12 on 19 November. The number keeps counting across days and restarts. `clips/index.jsonl` lists every clip in order.
 
 Want the phone version in the other layout (full-screen crop instead of a blurred background)?
 
 ```bash
-python -m clipper render clips/twitch_name_20261119-131434.mp4 --layout crop
+python -m clipper render clips/KaiCenat/KaiCenat_2026-11-19_21-34-12_3.mp4 --layout crop
 ```
 
 **`clips/other-languages`** holds clips where the streamer clearly speaks another language, in case one

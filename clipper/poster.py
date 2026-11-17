@@ -57,8 +57,11 @@ TARGETS = {
 def find_metadata(clip: Path, clips_dir: Path) -> dict:
     """The clip's .json from the clipper (next to it, or in the clips folder)."""
     stem = re.sub(r"_vertical$", "", clip.stem)
-    for folder in (clip.parent, clips_dir, clips_dir / "other-languages"):
-        p = folder / f"{stem}.json"
+    # Clips live in a folder per streamer (clips/<Streamer>/), older ones directly in clips/.
+    candidates = [clip.parent / f"{stem}.json"]
+    if clips_dir.exists():
+        candidates += list(clips_dir.rglob(f"{stem}.json"))
+    for p in candidates:
         if p.exists():
             try:
                 return json.loads(p.read_text(encoding="utf-8"))

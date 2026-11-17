@@ -106,7 +106,7 @@ def set_aside(clip: Path) -> Path:
 
 
 async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
-                          languages: list[str] | None = None) -> Path | None:
+                          languages: list[str] | None = None, recent_dir: Path | None = None) -> Path | None:
     """Make <clip>_vertical.mp4 next to the clip and add the caption plan to its .json."""
     global _slots
     if _slots is None:
@@ -124,9 +124,9 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
             return None
         plan: Plan | None = None
         if cfg.ai_captions:
-            plan = await claude_plan(clip, meta, words, length, cfg.ai_model, recent=load_recent(clip.parent))
+            plan = await claude_plan(clip, meta, words, length, cfg.ai_model, recent=load_recent(recent_dir or clip.parent))
         plan = plan or rule_plan(meta, words)
-        remember_hook(clip.parent, plan.hook)
+        remember_hook(recent_dir or clip.parent, plan.hook)
         log.info("✍️  %s: \"%s\" (%s, %s, %d words, %d beats)", clip.name, plan.hook, plan.mood,
                  plan.source, len(words), len(plan.beats))
 

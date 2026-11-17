@@ -17,6 +17,7 @@ from .config import Config
 from .detector import Spike, SpikeDetector
 from .models import ChatMessage, Stream
 from .recorder import Recorder
+from .naming import clip_path, commit_number
 from .vertical import render_vertical
 
 log = logging.getLogger(__name__)
@@ -92,11 +93,12 @@ class ChannelSession:
         end = spike.onset + c.post_roll - c.chat_delay
         # Wait until the post-roll has been recorded and its segment closed.
         await asyncio.sleep(max(0.0, end - time.time()) + c.segment_seconds * 2 + 1)
-        stamp = datetime.fromtimestamp(spike.onset).strftime("%Y%m%d-%H%M%S")
-        out = Path(c.output_dir) / f"{_safe(self.stream.key)}_{stamp}.mp4"
+        streamer = self.stream.display_name or self.stream.channel.split("#")[0]
+        out, number = clip_path(c.output_dir, streamer, spike.onset)
         actual_start = await self.recorder.save_clip(start, end, out)
         if actual_start is None:
             return
+        commit_number(out.parent, number)
         self.clips_saved += 1
         window = [m for m in self.recent if spike.onset - 5 <= m.ts <= spike.detected_at + 10]
         timeline = [[round(m.ts - actual_start, 1), m.user, m.text]
@@ -104,7 +106,8 @@ class ChannelSession:
         meta = {
             "platform": self.stream.platform, "channel": self.stream.channel,
             "name": self.stream.display_name or self.stream.channel, "url": self.stream.url,
-            "title": self.stream.title, "clip": out.name,
+            "title": self.stream.title, "clip": out.name, "clip_number": number,
+            "folder": out.parent.name,
             "explosion_at": datetime.fromtimestamp(spike.onset).isoformat(timespec="seconds"),
             "clip_start": datetime.fromtimestamp(start).isoformat(timespec="seconds"),
             "clip_end": datetime.fromtimestamp(end).isoformat(timespec="seconds"),
@@ -120,4 +123,5 @@ class ChannelSession:
                                ensure_ascii=False) + "\n")
         log.info("🎬 saved %s", out)
         if self.cfg.vertical.enabled:
-            await render_vertical(out, self.cfg.vertical, languages=self.cfg.discovery.languages)
+            await render_vertical(out, self.cfg.vertical, languages=self.cfg.discovery.languages,
+                                  recent_dir=Path(c.output_dir))

@@ -130,7 +130,7 @@ def run_checks(cfg: Config, interactive: bool = True) -> int:
 
     # What recent clips actually got
     print()
-    metas = sorted(Path(cfg.clips.output_dir).glob("*.json"), key=lambda p: p.stat().st_mtime)[-5:]
+    metas = sorted((p for p in Path(cfg.clips.output_dir).rglob("*.json") if p.parent.name != "other-languages" and not p.name.startswith(".")), key=lambda p: p.stat().st_mtime)[-5:]
     if not metas:
         _say(WARN, "No clips yet, so nothing to check there")
     else:

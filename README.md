@@ -11,9 +11,9 @@ the rankings change.
 ```
 13:02:11 INFO    top 10 for 'Grand Theft Auto VI': twitch:kaicenat(212,904), kick:adinross(98,311), ...
 13:14:37 INFO    🔥 twitch:kaicenat chat exploded: 412.6 msg/s vs 61.2 normal (x6.7, z=18.3)
-13:14:58 INFO    🎬 saved clips/twitch_kaicenat_20261119-131434.mp4
-13:15:21 INFO    ✍️  twitch_kaicenat_20261119-131434.mp4: "Kai jumped the bridge in a cop car" (hype, claude, 74 words, 2 beats)
-13:15:49 INFO    📱 saved clips/twitch_kaicenat_20261119-131434_vertical.mp4
+13:14:58 INFO    🎬 saved clips/KaiCenat/KaiCenat_2026-11-19_13-14-34_3.mp4
+13:15:21 INFO    ✍️  KaiCenat_2026-11-19_13-14-34_3.mp4: "Kai jumped the bridge in a cop car" (hype, claude, 74 words, 2 beats)
+13:15:49 INFO    📱 saved clips/KaiCenat/KaiCenat_2026-11-19_13-14-34_3_vertical.mp4
 ```
 
 Every clip is saved twice: the original 16:9 video, plus a **1080×1920 phone version with
@@ -72,7 +72,7 @@ Two layouts (`[vertical] layout` in config):
 Re-render any clip (e.g. after changing the layout):
 
 ```bash
-python -m clipper render clips/twitch_kaicenat_20261119-131434.mp4 --layout crop
+python -m clipper render clips/KaiCenat/KaiCenat_2026-11-19_13-14-34_3.mp4 --layout crop
 python -m clipper render clips/*.mp4 --no-ai
 ```
 

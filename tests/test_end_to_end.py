@@ -58,10 +58,14 @@ def test_clip_saved_with_preroll(tmp_path):
 
     sess = asyncio.run(go())
     assert sess.clips_saved == 1
-    clips = [c for c in (tmp_path / "clips").glob("*.mp4") if not c.stem.endswith("_vertical")]
+    clips = [c for c in (tmp_path / "clips").rglob("*.mp4") if not c.stem.endswith("_vertical")]
     assert len(clips) == 1
     # pre_roll 8 + post_roll 4, trimmed to the exact second
     assert abs(duration(clips[0]) - 12) <= 0.25, duration(clips[0])
+    # clips/<Streamer>/<Streamer>_<date>_<time>_<n>.mp4
+    import re
+    assert clips[0].parent.name == "Fake"
+    assert re.fullmatch(r"Fake_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_1\.mp4", clips[0].name), clips[0].name
     meta = json.loads(clips[0].with_suffix(".json").read_text())
     assert meta["chat_rate"] > meta["normal_rate"] * 3
     assert any("OMEGALUL" in line for line in meta["chat_sample"])
