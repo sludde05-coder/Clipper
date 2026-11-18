@@ -77,6 +77,15 @@ def remember_hook(folder: Path, hook: str) -> None:
         pass
 
 
+# The safest settings for TikTok / Reels / Shorts uploads, and for picky hardware video decoders
+# (e.g. on Snapdragon laptops), which can show a decode they choke on as a green screen:
+# H.264 High at level 4.1 (4.0 is right at its limit for 1080x1920), 8-bit 4:2:0 with the colours
+# marked as standard HD (BT.709, TV range) instead of left unknown, constant 30 fps, a keyframe every
+# 2 seconds starting at the first frame, and stereo AAC at 48 kHz.
+PLATFORM_VIDEO = ["-c:v", "libx264", "-profile:v", "high", "-level:v", "4.1", "-pix_fmt", "yuv420p",
+                  "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
+                  "-r", "30", "-fps_mode", "cfr", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0", "-bf", "2"]
+PLATFORM_AUDIO = ["-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2"]
 ENCODE_TIMEOUT = 15 * 60       # a 30 s clip takes under a minute; anything near this is stuck
 SPEECH_TIMEOUT = 20 * 60       # includes the one-time ~500 MB model download
 _speech_gave_up = False        # after a speech-to-text timeout, skip it for the rest of the session
@@ -104,8 +113,8 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         *(["-fflags", "+genpts"] if safe else []), "-i", str(clip.resolve()),
         "-filter_complex", filter_graph(cfg.layout, focus_x, safe),
         "-map", "[v]", "-map", "0:a?", *audio,
-        "-c:v", "libx264", "-preset", cfg.preset, "-crf", str(cfg.crf), "-pix_fmt", "yuv420p",
-        "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out.resolve()),
+        *PLATFORM_VIDEO, "-preset", cfg.preset, "-crf", str(cfg.crf),
+        *PLATFORM_AUDIO, "-movflags", "+faststart", str(out.resolve()),
         cwd=tmp, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
     try:
         _, err = await asyncio.wait_for(proc.communicate(), ENCODE_TIMEOUT)
@@ -114,6 +123,44 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         await proc.wait()
         return False, f"rendering took over {ENCODE_TIMEOUT // 60} minutes and was stopped"
     return proc.returncode == 0, err.decode(errors="replace").strip()
+
+
+def needs_upgrade(clip: Path) -> bool:
+    """Phone clips made before the upload-safe settings (level 4.0, colours left unknown)."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "stream=level,color_primaries", "-of", "json", str(clip)],
+                       capture_output=True, text=True, **NO_WINDOW)
+    try:
+        s = (json.loads(r.stdout or "{}").get("streams") or [{}])[0]
+    except ValueError:
+        return False
+    return bool(s) and (int(s.get("level") or 0) < 41 or s.get("color_primaries") in (None, "unknown"))
+
+
+async def upgrade_old_clips(clips_dir: Path) -> int:
+    """Re-encode older phone clips with the upload-safe settings (captions are already burned in,
+    so this keeps them; high quality, so nothing visible is lost)."""
+    done = 0
+    for clip in sorted(clips_dir.glob("*/Phone clips/*.mp4")):
+        if not await asyncio.to_thread(needs_upgrade, clip):
+            continue
+        work = clip.parent.parent / ".work"   # out of Phone clips while it's being made
+        work.mkdir(parents=True, exist_ok=True)
+        tmp = work / (clip.stem + ".rendering.mp4")  # a name the start-up recovery cleans up if interrupted
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(clip),
+            *PLATFORM_VIDEO, "-preset", "medium", "-crf", "17", *PLATFORM_AUDIO, "-movflags", "+faststart", str(tmp),
+            stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
+        _, err = await proc.communicate()
+        if proc.returncode == 0 and probe_video_duration(tmp) >= probe_video_duration(clip) - 1:
+            tmp.replace(clip)
+            done += 1
+        else:
+            tmp.unlink(missing_ok=True)
+            log.warning("couldn't upgrade %s: %s", clip.name, err.decode(errors="replace")[-200:])
+    if done:
+        log.info("🔧 updated %d older clip%s to upload-safe video settings", done, "" if done == 1 else "s")
+    return done
 
 
 def wrong_language(tr: Transcript, languages: list[str] | None) -> bool:

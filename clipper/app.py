@@ -807,6 +807,8 @@ class ClipperApp:
             n = await recover_unfinished(self.cfg)
             if n:
                 log.info("🩹 finished %s left unfinished", "1 clip that was" if n == 1 else f"{n} clips that were")
+            from .vertical import upgrade_old_clips
+            await upgrade_old_clips(self.clips_dir)
         finally:
             self.jobs["__recovery__"] = {"state": "done", "error": ""}
 

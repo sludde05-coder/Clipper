@@ -50,3 +50,32 @@ def test_never_leaves_a_broken_clip(tmp_path, monkeypatch):
     out, calls = render(tmp_path, monkeypatch, broken_passes=(False, True))
     assert out is None and calls == [False, True]
     assert not (tmp_path / "c_vertical.mp4").exists()
+
+
+def test_phone_clips_use_upload_safe_settings(tmp_path, monkeypatch):
+    out, _ = render(tmp_path, monkeypatch, broken_passes=())
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=level,color_primaries,color_space,"
+                        "sample_rate,channels", "-of", "json", str(out)], capture_output=True, text=True)
+    import json
+    v, a = json.loads(r.stdout)["streams"]
+    assert v["level"] == 41 and v["color_primaries"] == "bt709" and v["color_space"] == "bt709"
+    assert a["sample_rate"] == "48000" and a["channels"] == 2
+    assert not v_needs(out)
+
+
+def v_needs(p):
+    return v.needs_upgrade(p)
+
+
+def test_older_clips_are_upgraded(tmp_path):
+    root = tmp_path / "clips" / "KaiCenat" / "Phone clips"
+    root.mkdir(parents=True)
+    old = root / "KaiCenat_2026-11-19_21-34-12_1.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=30",
+                    "-f", "lavfi", "-i", "sine", "-t", "3", "-c:v", "libx264", "-preset", "ultrafast", "-level", "4.0",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "1", str(old)], check=True)
+    assert v.needs_upgrade(old)
+    assert asyncio.run(v.upgrade_old_clips(tmp_path / "clips")) == 1
+    assert not v.needs_upgrade(old) and abs(v.probe_video_duration(old) - 3) < 0.3
+    assert sorted(p.name for p in root.iterdir()) == [old.name]          # nothing left behind
+    assert asyncio.run(v.upgrade_old_clips(tmp_path / "clips")) == 0     # only once
