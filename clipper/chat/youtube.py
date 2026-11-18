@@ -175,6 +175,8 @@ async def youtube_chat(url: str, session: aiohttp.ClientSession) -> AsyncIterato
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
+            if session.closed:
+                return  # clipping was stopped
             fails += 1
             delay = min(2 ** fails, 300)
             # Say it a few times, then only now and then, so the log stays readable.

@@ -119,7 +119,7 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
         _slots = asyncio.Semaphore(max(1, cfg.max_parallel))
     async with _slots:  # transcription + encoding are CPU heavy; don't run 10 at once
         meta_path = meta_path or clip.with_suffix(".json")
-        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
         length = await asyncio.to_thread(probe_duration, clip)
 
         edited = plan is not None
@@ -163,6 +163,6 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
         meta["captions"] = {**asdict(plan), "transcript": " ".join(w.text for w in words),
                             "words": [[round(w.start, 2), round(w.end, 2), w.text] for w in words],
                             "layout": cfg.layout}
-        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
         log.info("rendered %s", out.name)
         return out

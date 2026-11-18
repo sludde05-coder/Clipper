@@ -108,7 +108,7 @@ class Recorder:
         # streamlink's message explains the cause; ffmpeg's ("Invalid data") is usually just the effect.
         for path in (self._src_log, self._ff_log):
             try:
-                lines = [ln.strip() for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
+                lines = [ln.strip() for ln in path.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
             except OSError:
                 continue
             if lines:
@@ -172,7 +172,7 @@ class Recorder:
             except FileNotFoundError:
                 continue
             lines.append(f"file '{dst.name}'")
-        listing.write_text("\n".join(lines))
+        listing.write_text("\n".join(lines), encoding="utf-8")
         first = picked[0][0]
         skip = max(0.0, start - first)                 # into the first segment
         length = end - max(start, first)

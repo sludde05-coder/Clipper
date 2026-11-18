@@ -58,6 +58,8 @@ async def kick_chat(channel: str, session: aiohttp.ClientSession, creds: Credent
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
+            if session.closed:
+                return  # clipping was stopped
             log.warning("kick:%s chat dropped (%s), retrying in %ss", slug, e, backoff)
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, 120)

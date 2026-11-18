@@ -102,7 +102,7 @@ def _fill(obj, data: dict, prefix: str = ""):
 def load_config(path: str | None) -> Config:
     cfg = Config()
     if path and Path(path).exists():
-        data = tomllib.loads(Path(path).read_text())
+        data = tomllib.loads(Path(path).read_text(encoding="utf-8-sig"))
         _fill(cfg.discovery, data.get("discovery", {}))
         _fill(cfg.detector, data.get("detector", {}))
         _fill(cfg.clips, data.get("clips", {}))

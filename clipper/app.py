@@ -687,6 +687,17 @@ class ClipperApp:
 
     # ------------------------------------------------------------ app
 
+    async def _recover(self) -> None:
+        """Finish clips left halfway last time (shown as a rendering job while it runs)."""
+        from .session import recover_unfinished
+        self.jobs["__recovery__"] = {"state": "running", "error": ""}
+        try:
+            n = await recover_unfinished(self.cfg)
+            if n:
+                log.info("🩹 finished %d clip%s that were left unfinished", n, "" if n == 1 else "s")
+        finally:
+            self.jobs["__recovery__"] = {"state": "done", "error": ""}
+
     def make_app(self) -> web.Application:
         app = web.Application(middlewares=[self.guard], client_max_size=4 * 1024 ** 2)
         r = app.router
@@ -737,6 +748,7 @@ class ClipperApp:
                 log.warning("📱 Phone app couldn't start: %s", e)
         if open_ui:
             open_window(url)
+        asyncio.create_task(self._recover())
         try:
             while not self.quit_event.is_set():
                 try:

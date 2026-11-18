@@ -61,3 +61,55 @@ def test_keep_originals_setting(tmp_path, monkeypatch):
 
 def test_phone_versions_off_keeps_original(tmp_path, monkeypatch):
     assert run_clip(tmp_path, monkeypatch, vertical=False) == {"Originals", "Captions and details"}
+
+
+def test_chat_with_emoji_and_other_scripts_is_saved(tmp_path, monkeypatch):
+    """The details file holds raw chat; it must save whatever people type."""
+    import json
+    from clipper.models import ChatMessage
+    cfg_root = tmp_path
+
+    class Chatty(FakeRecorder):
+        pass
+
+    def patched(sess):
+        now = time.time() - 5
+        for i, text in enumerate(["KEKW 😂😂", "ㅋㅋㅋㅋ", "мда", "no way 💀", "¿qué?", "x​\ud83d"[:-1]]):
+            sess.recent.append(ChatMessage(f"u{i}", text, now + 0.1 * i))
+
+    real_init = s.ChannelSession.__init__
+
+    def init(self, *a, **k):
+        real_init(self, *a, **k)
+        patched(self)
+
+    monkeypatch.setattr(s.ChannelSession, "__init__", init)
+    folders = run_clip(cfg_root, monkeypatch)
+    assert "Phone clips" in folders
+    details = next((cfg_root / "clips" / "KaiCenat" / "Captions and details").glob("*.json"))
+    text = details.read_text(encoding="utf-8")
+    assert "😂" in text and "ㅋㅋ" in text and "мда" in text
+
+
+def test_unfinished_clip_is_recovered(tmp_path, monkeypatch):
+    from clipper import naming
+
+    cfg = s.Config()
+    cfg.clips.output_dir = str(tmp_path / "clips")
+    work = tmp_path / "clips" / "KaiCenat" / naming.WORK
+    work.mkdir(parents=True)
+    (work / "KaiCenat_2026-11-19_21-34-12_1.mp4").write_bytes(b"original")
+    (work / "KaiCenat_2026-11-19_21-34-12_1.phone.mp4").write_bytes(b"half")   # left over from a crash
+
+    async def fake_render(clip, vcfg, out=None, **kw):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"phone")
+        return out
+
+    monkeypatch.setattr(s, "render_vertical", fake_render)
+    assert asyncio.run(s.recover_unfinished(cfg)) == 1
+    root = tmp_path / "clips" / "KaiCenat"
+    assert (root / "Phone clips" / "KaiCenat_2026-11-19_21-34-12_1.mp4").exists()
+    assert (root / ".source" / "KaiCenat_2026-11-19_21-34-12_1.mp4").exists()
+    assert (root / "Captions and details" / "KaiCenat_2026-11-19_21-34-12_1.json").exists()
+    assert list(work.iterdir()) == []

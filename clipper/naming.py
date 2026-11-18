@@ -39,7 +39,7 @@ def next_number(folder: Path) -> int:
     """The next clip number for the streamer in this folder (doesn't reserve it)."""
     n = 0
     try:
-        n = int((folder / COUNT_FILE).read_text().strip())
+        n = int((folder / COUNT_FILE).read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         pass
     # Also look at the files, in case the count file was deleted.
@@ -53,7 +53,7 @@ def next_number(folder: Path) -> int:
 
 def commit_number(folder: Path, n: int) -> None:
     try:
-        (folder / COUNT_FILE).write_text(str(n))
+        (folder / COUNT_FILE).write_text(str(n), encoding="utf-8")
     except OSError:
         pass
 

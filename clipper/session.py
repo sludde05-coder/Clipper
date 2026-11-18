@@ -60,12 +60,17 @@ class ChannelSession:
             log.error("%s: %s stopped with an error: %r", self.stream.key, task.get_name(), task.exception())
 
     async def stop(self) -> None:
-        # Let clips that are already waiting for their post-roll finish first.
+        # Stop reading chat and spotting explosions right away, but keep recording until
+        # clips that are waiting for their last seconds are finished.
+        recorder, others = self._tasks[:1], self._tasks[1:]
+        for t in others:
+            t.cancel()
+        await asyncio.gather(*others, return_exceptions=True)
         if self._pending:
             await asyncio.gather(*self._pending, return_exceptions=True)
-        for t in self._tasks:
+        for t in recorder:
             t.cancel()
-        await asyncio.gather(*self._tasks, return_exceptions=True)
+        await asyncio.gather(*recorder, return_exceptions=True)
 
     async def _read_chat(self) -> None:
         source = self._chat or chat_source(self.stream, self.http, self.cfg.creds)
@@ -85,7 +90,14 @@ class ChannelSession:
                          self.stream.key, spike.rate, spike.baseline, spike.ratio, spike.zscore)
                 t = asyncio.create_task(self._clip(spike))
                 self._pending.add(t)
-                t.add_done_callback(self._pending.discard)
+                t.add_done_callback(self._clip_done)
+
+    def _clip_done(self, task: asyncio.Task) -> None:
+        self._pending.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            e = task.exception()
+            log.error("couldn't finish a clip for %s: %s: %s (it will be finished next time Clipper starts)",
+                      self.stream.key, type(e).__name__, e, exc_info=e)
 
     async def _clip(self, spike: Spike) -> None:
         c = self.cfg.clips
@@ -120,40 +132,75 @@ class ChannelSession:
             "chat_sample": [f"{m.user}: {m.text}" for m in window[:40]],
             "chat_timeline": timeline[-400:],
         }
-        details.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
-        with open(Path(c.output_dir) / "index.jsonl", "a") as f:
+        details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        with open(Path(c.output_dir) / "index.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({k: v for k, v in meta.items() if k not in ("chat_sample", "chat_timeline")},
                                ensure_ascii=False) + "\n")
         log.info("🎬 clip saved: %s", out.name)
-        folder = naming.streamer_dir(out)
-        if not self.cfg.vertical.enabled:
-            naming.move_into(out, folder / naming.ORIGINALS)
-            return
-        # Made in .work and moved into Phone clips only when finished, so nothing ever sees a half-written file.
-        rendering = out.with_name(out.stem + ".phone.mp4")
-        phone = await render_vertical(out, self.cfg.vertical, out=rendering,
-                                      languages=self.cfg.discovery.languages, recent_dir=Path(c.output_dir),
-                                      meta_path=details, aside_dir=folder / naming.OTHER_LANGUAGES)
-        if phone is not None:
-            final = naming.phone_path(out)
-            final.parent.mkdir(parents=True, exist_ok=True)
-            rendering.replace(final)
-            phone = final
+        await finish_clip(out, details, self.cfg)
+
+
+async def finish_clip(out: Path, details: Path, cfg: Config) -> Path | None:
+    """Turn a saved original (in <Streamer>/.work) into its phone clip and file everything away.
+    Used right after a clip is saved, and to finish clips left unfinished (see recover_unfinished)."""
+    c = cfg.clips
+    folder = naming.streamer_dir(out)
+    if not cfg.vertical.enabled:
+        naming.move_into(out, folder / naming.ORIGINALS)
+        return
+    # Made in .work and moved into Phone clips only when finished, so nothing ever sees a half-written file.
+    rendering = out.with_name(out.stem + ".phone.mp4")
+    phone = await render_vertical(out, cfg.vertical, out=rendering,
+                                  languages=cfg.discovery.languages, recent_dir=Path(c.output_dir),
+                                  meta_path=details, aside_dir=folder / naming.OTHER_LANGUAGES)
+    if phone is not None:
+        final = naming.phone_path(out)
+        final.parent.mkdir(parents=True, exist_ok=True)
+        rendering.replace(final)
+        phone = final
+        try:
+            meta = json.loads(details.read_text(encoding="utf-8"))
+            meta["vertical"] = final.name
+            details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+        log.info("📱 phone clip ready: %s", final.name)
+    else:
+        rendering.unlink(missing_ok=True)
+    if not out.exists():
+        return  # set aside (another language)
+    if phone is None:
+        kept = naming.move_into(out, folder / naming.NOT_CONVERTED)
+        log.warning("kept the original in %s, since the phone version couldn't be made", kept.parent)
+    elif c.keep_originals:
+        naming.move_into(out, folder / naming.ORIGINALS)
+    else:
+        naming.move_into(out, folder / naming.SOURCE)  # deleted once posted, kept for caption edits
+    return phone
+
+
+async def recover_unfinished(cfg: Config) -> int:
+    """Finish clips that were saved but never got their phone clip (e.g. the app was closed or
+    something failed halfway). They wait in <Streamer>/.work."""
+    root = Path(cfg.clips.output_dir)
+    if not root.exists():
+        return 0
+    done = 0
+    for work in sorted(root.glob(f"*/{naming.WORK}")):
+        for leftover in sorted(work.glob("*.mp4")):
+            if leftover.name.endswith((".phone.mp4", ".rendering.mp4")):
+                leftover.unlink(missing_ok=True)  # a half-made phone clip from last time
+                continue
+            details = naming.details_path(leftover)
+            if not details.exists():
+                details.parent.mkdir(parents=True, exist_ok=True)
+                details.write_text(json.dumps({"name": naming.streamer_dir(leftover).name, "clip": leftover.name,
+                                               "explosion_offset": cfg.clips.pre_roll, "recovered": True},
+                                              indent=2, ensure_ascii=False), encoding="utf-8")
+            log.info("🩹 finishing a clip that was left unfinished: %s", leftover.name)
             try:
-                meta = json.loads(details.read_text(encoding="utf-8"))
-                meta["vertical"] = final.name
-                details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-            except (OSError, ValueError):
-                pass
-            log.info("📱 phone clip ready: %s", final.name)
-        else:
-            rendering.unlink(missing_ok=True)
-        if not out.exists():
-            return  # set aside (another language)
-        if phone is None:
-            kept = naming.move_into(out, folder / naming.NOT_CONVERTED)
-            log.warning("kept the original in %s, since the phone version couldn't be made", kept.parent)
-        elif c.keep_originals:
-            naming.move_into(out, folder / naming.ORIGINALS)
-        else:
-            naming.move_into(out, folder / naming.SOURCE)  # deleted once posted, kept for caption edits
+                await finish_clip(leftover, details, cfg)
+                done += 1
+            except Exception as e:  # noqa: BLE001
+                log.error("couldn't finish %s: %s", leftover.name, e)
+    return done
