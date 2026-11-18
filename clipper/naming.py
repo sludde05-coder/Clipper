@@ -3,8 +3,9 @@
     clips/<Streamer>/Phone clips/<Streamer>_<YYYY-MM-DD>_<HH-MM-SS>_<n>.mp4
     clips/<Streamer>/Captions and details/<Streamer>_<YYYY-MM-DD>_<HH-MM-SS>_<n>.json
 
-The 16:9 original is only kept while the phone version is made (in .work), unless
-keep_originals is on (then in Originals/). If the phone version fails it's kept in
+The 16:9 original is kept out of sight in .source/ so the captions can still be edited and
+re-rendered, and deleted once the clip is posted or deleted (or kept in Originals/ with
+keep_originals). If the phone version fails it's kept in
 Not converted/, and clips in another language in Other languages/.
 
 n counts that streamer's clips (1, 2, 3, ...), across days and restarts. The time is when
@@ -20,6 +21,7 @@ COUNT_FILE = ".clip-count"
 PHONE = "Phone clips"
 DETAILS = "Captions and details"
 WORK = ".work"
+SOURCE = ".source"         # caption-free original, kept until the clip is posted or deleted
 ORIGINALS = "Originals"
 NOT_CONVERTED = "Not converted"
 OTHER_LANGUAGES = "Other languages"
@@ -75,6 +77,16 @@ def phone_path(work_clip: Path) -> Path:
 
 def details_path(work_clip: Path) -> Path:
     return streamer_dir(work_clip) / DETAILS / (work_clip.stem + ".json")
+
+
+def source_for(phone_clip: Path) -> Path | None:
+    """The caption-free original behind a phone clip, if it still exists."""
+    root = phone_clip.parent.parent
+    for folder in (SOURCE, ORIGINALS, NOT_CONVERTED):
+        p = root / folder / phone_clip.name
+        if p.exists():
+            return p
+    return None
 
 
 def move_into(path: Path, folder: Path) -> Path:

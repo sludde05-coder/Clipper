@@ -16,13 +16,32 @@ log = logging.getLogger(__name__)
 class Orchestrator:
     """Keeps one ChannelSession per tracked stream and swaps them as rankings change."""
 
-    def __init__(self, cfg: Config, config_path: str | None = None):
+    def __init__(self, cfg: Config, config_path: str | None = None, *, start_phone: bool = True,
+                 log_status: bool = True):
         self.cfg = cfg
         self.config_path = config_path
+        self.start_phone = start_phone
+        self.log_status = log_status
         self.sessions: dict[str, ChannelSession] = {}
+        self.last_top: list[Stream] = []
+
+    def status_rows(self) -> list[dict]:
+        rows = []
+        for key, s in self.sessions.items():
+            rows.append({"key": key, "platform": s.stream.platform,
+                         "name": s.stream.display_name or s.stream.channel, "url": s.stream.url,
+                         "viewers": s.stream.viewers, "title": s.stream.title, "video": s.recorder.live,
+                         "chat": round(s.detector.last_rate, 1), "normal": round(s.detector.last_baseline, 1),
+                         "peak": round(s.detector.peak_ratio(), 1), "clips": s.clips_saved})
+        return rows
+
+    async def stop_all(self) -> None:
+        """Stop every channel; clips already waiting for their last seconds are finished first."""
+        sessions, self.sessions = list(self.sessions.values()), {}
+        await asyncio.gather(*(s.stop() for s in sessions), return_exceptions=True)
 
     async def _start_phone(self) -> None:
-        if not self.cfg.phone.enabled:
+        if not self.cfg.phone.enabled or not self.start_phone:
             return
         try:
             from .phone import PhoneServer
@@ -44,6 +63,8 @@ class Orchestrator:
                 self.sessions[st.key] = sess
 
     def status(self) -> None:
+        if not self.log_status:
+            return
         if not self.sessions:
             log.info("not tracking anything yet")
             return
@@ -67,6 +88,7 @@ class Orchestrator:
             while True:
                 try:
                     top = await disc.top_streams()
+                    self.last_top = top
                     log.info("top %d for %r: %s", self.cfg.discovery.top_n, self.cfg.discovery.game,
                              ", ".join(f"{s.key}({s.viewers:,})" for s in top) or "none live")
                     await self._sync(top, http)

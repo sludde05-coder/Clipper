@@ -44,11 +44,11 @@ def run_clip(tmp_path, monkeypatch, phone_ok=True, keep=False, vertical=True):
     asyncio.run(go())
     root = tmp_path / "clips" / "KaiCenat"
     return {str(p.relative_to(root)).replace("\\", "/").split("/")[0] for p in root.rglob("*") if p.is_file()
-            and not p.name.startswith(".")}
+            and not p.name.startswith(".clip-count")}
 
 
-def test_phone_clip_made_original_deleted(tmp_path, monkeypatch):
-    assert run_clip(tmp_path, monkeypatch) == {"Phone clips", "Captions and details"}
+def test_phone_clip_made_original_kept_hidden_for_edits(tmp_path, monkeypatch):
+    assert run_clip(tmp_path, monkeypatch) == {"Phone clips", "Captions and details", ".source"}
 
 
 def test_failed_phone_version_keeps_original(tmp_path, monkeypatch):

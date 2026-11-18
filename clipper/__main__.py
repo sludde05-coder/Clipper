@@ -4,6 +4,7 @@ python -m clipper setup                    # guided API key setup
 python -m clipper post                     # post clips dropped into the POST folder
 python -m clipper check                    # test every part and say what to fix
 python -m clipper phone                    # phone app: show the QR code to connect your phone
+python -m clipper app                      # the Clipper app window (desktop icon / Clipper.bat)
 python -m clipper run                      # auto-track the top 10 GTA 6 streams
 python -m clipper discover                 # just print the current top 10
 python -m clipper watch twitch:xqc kick:adinross youtube:VIDEO_ID
@@ -39,6 +40,8 @@ def main() -> None:
     sub.add_parser("post", help="walk through posting clips dropped into the POST folder")
     sub.add_parser("check", help="test every part and say what to fix")
     sub.add_parser("phone", help="run the phone app and show its QR code")
+    ap_ = sub.add_parser("app", help="open the Clipper app window (what the desktop icon runs)")
+    ap_.add_argument("--no-window", action="store_true", help="run the app server without opening a window")
     r = sub.add_parser("run", help="track the top N streams of the configured game")
     r.add_argument("--game", help="override the game (e.g. to test on a game that's live now)")
     d = sub.add_parser("discover", help="print the current top streams and exit")
@@ -77,6 +80,9 @@ def main() -> None:
             asyncio.run(Orchestrator(cfg, a.config).run_fixed([parse_target(t) for t in a.targets]))
         elif a.cmd == "discover":
             asyncio.run(_discover(cfg))
+        elif a.cmd == "app":
+            from .app import main as app_main
+            asyncio.run(app_main(a.config, open_ui=not a.no_window))
         elif a.cmd == "phone":
             from .phone import serve_forever
             asyncio.run(serve_forever(cfg, a.config))

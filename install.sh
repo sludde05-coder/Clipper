@@ -144,8 +144,8 @@ echo "=============================================="
 printf '\033[1;32m   ✔ All done!\033[0m\n'
 echo "=============================================="
 if [ "$OS" = "Darwin" ]; then
-  echo "To start: double-click  Clipper.command  in the $(basename "$(pwd)") folder."
+  echo "To start: double-click  Clipper.command  in the $(basename "$(pwd)") folder. It opens the Clipper app."
 else
   echo "To start:  $(pwd)/Clipper.command"
 fi
-echo "Tip: try option 4 first to test it on a game that's live today."
+echo "Tip: in the app, use 'Test on another game' first to try it on a game that's live today."

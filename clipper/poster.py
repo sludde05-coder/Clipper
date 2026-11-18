@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import PostConfig
+from .proc import NO_WINDOW
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm"}
 PLATFORM_NAMES = {"twitch": "Twitch", "youtube": "YouTube", "kick": "Kick"}
@@ -115,6 +116,23 @@ def build_captions(meta: dict, clip: Path, credit: bool = True) -> dict[str, dic
     }
 
 
+def captions_for(meta: dict, clip: Path, cfg: PostConfig | None = None) -> dict[str, dict[str, str]]:
+    """The captions to post: generated ones plus the platform's extra hashtags, with any edits
+    made in the app (saved in the clip's details under "post") taking priority."""
+    cfg = cfg or PostConfig()
+    caps = build_captions(meta, clip, cfg.credit)
+    for key, field in (("tiktok", "caption"), ("youtube", "description"), ("instagram", "caption")):
+        extra = [t if t.startswith("#") else f"#{t}" for t in getattr(cfg, f"{key}_tags", "").split() if t.strip("#")]
+        have = {t.lower() for t in _hashtags(caps[key][field])}
+        add = [t for t in extra if t.lower() not in have]
+        if add:
+            caps[key][field] = caps[key][field].rstrip() + " " + " ".join(add)
+    for key, fields in (meta.get("post") or {}).items():
+        if key in caps and isinstance(fields, dict):
+            caps[key].update({k: v for k, v in fields.items() if isinstance(v, str) and k in caps[key]})
+    return caps
+
+
 def captions_text(caps: dict[str, dict[str, str]]) -> str:
     parts = []
     for key, fields in caps.items():
@@ -134,7 +152,7 @@ def copy_to_clipboard(text: str) -> bool:
             # Passing the text through an environment variable keeps emoji intact.
             env = {**os.environ, "CLIPPER_CLIP": text}
             r = subprocess.run(["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value $env:CLIPPER_CLIP"],
-                               env=env, capture_output=True, timeout=15)
+                               env=env, capture_output=True, timeout=15, **NO_WINDOW)
             return r.returncode == 0
         if sys.platform == "darwin":
             env = {**os.environ, "LANG": "en_US.UTF-8"}
@@ -224,7 +242,7 @@ class Poster:
 
     def post(self, clip: Path) -> dict[str, str]:
         meta = find_metadata(clip, self.clips_dir)
-        caps = build_captions(meta, clip, self.cfg.credit)
+        caps = captions_for(meta, clip, self.cfg)
         caption_file = clip.with_suffix(".txt")
         caption_file.write_text(captions_text({t.key: caps[t.key] for t in self.targets}), encoding="utf-8")
 

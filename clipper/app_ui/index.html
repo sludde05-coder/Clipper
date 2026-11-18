@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipper</title>
+<link rel="icon" href="/icon.png">
+<style>
+  :root {
+    --bg: #0d0f14; --panel: #151821; --panel2: #1b1f2a; --panel3: #232838; --line: #2a3040;
+    --text: #eef1f6; --muted: #9aa3b5; --faint: #6c7489;
+    --accent: #7c5cff; --accent2: #9a83ff; --ok: #2ecc71; --warn: #f5a623; --bad: #ff5b5b;
+    --tiktok: #fe2c55; --youtube: #ff0033; --instagram: #d62976;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--accent2); }
+  .app { display: grid; grid-template-columns: 220px 1fr; height: 100vh; }
+
+  /* ---------- sidebar ---------- */
+  nav { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column;
+    padding: 18px 12px; gap: 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; font-weight: 700; font-size: 18px; }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .navbtn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent;
+    padding: 10px 12px; border-radius: 10px; color: var(--muted); cursor: pointer; text-align: left; font-weight: 600; }
+  .navbtn svg { width: 18px; height: 18px; flex: none; }
+  .navbtn:hover { background: var(--panel2); color: var(--text); }
+  .navbtn.active { background: var(--panel3); color: var(--text); }
+  .navbtn .count { margin-left: auto; background: var(--accent); color: #fff; border-radius: 999px; font-size: 11px;
+    padding: 1px 7px; }
+  .navspacer { flex: 1; }
+  .statuspill { margin: 0 4px 10px; padding: 10px 12px; border-radius: 12px; background: var(--panel2);
+    font-size: 12px; color: var(--muted); }
+  .statuspill b { display: block; color: var(--text); font-size: 13px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); margin-right: 6px; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(46,204,113,.18); }
+
+  /* ---------- main ---------- */
+  main { overflow: auto; position: relative; }
+  .page { padding: 26px 30px 40px; max-width: 1400px; }
+  .page[hidden] { display: none; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 10px;
+    padding: 9px 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  .btn:hover { background: var(--panel3); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent2); }
+  .btn.big { padding: 13px 22px; font-size: 16px; border-radius: 12px; }
+  .btn.danger { color: var(--bad); }
+  .btn.ok { background: rgba(46,204,113,.15); border-color: rgba(46,204,113,.45); color: var(--ok); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--text); background: var(--panel2); }
+  input[type=text], input[type=number], input[type=password], select, textarea {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; width: 100%; outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 70px; }
+  label.field { display: block; margin-bottom: 14px; }
+  label.field > span { display: block; font-weight: 600; margin-bottom: 6px; }
+  .help { color: var(--faint); font-size: 12px; margin-top: 4px; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch i { position: absolute; inset: 0; background: var(--panel3); border-radius: 999px; transition: .15s; cursor: pointer; }
+  .switch i::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: .15s; }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { transform: translateX(18px); }
+  .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 2px 8px;
+    border-radius: 999px; background: var(--panel3); color: var(--muted); }
+  .tag.done { background: rgba(46,204,113,.15); color: var(--ok); }
+  .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+  .seg button.on { background: var(--panel3); color: var(--text); }
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+  .empty b { display: block; color: var(--text); font-size: 17px; margin-bottom: 6px; }
+
+  /* ---------- clipping ---------- */
+  .hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; }
+  .hero .state { font-size: 20px; font-weight: 700; display: flex; align-items: center; }
+  .modes { margin: 14px 0 0; display: flex; flex-direction: column; gap: 10px; }
+  .modes .opt { display: flex; gap: 10px; align-items: center; }
+  .modes input[type=text] { max-width: 360px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--faint); font-weight: 600; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .meter { width: 90px; height: 6px; background: var(--panel3); border-radius: 99px; display: inline-block; vertical-align: middle; margin-left: 8px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--accent); }
+  .log { background: #0a0c10; border: 1px solid var(--line); border-radius: 12px; padding: 12px; height: 260px; overflow: auto;
+    font: 12px/1.55 ui-monospace, Consolas, "Cascadia Mono", Menlo, monospace; white-space: pre-wrap; }
+  .log .warning { color: var(--warn); } .log .error { color: var(--bad); } .log .t { color: var(--faint); }
+
+  /* ---------- clips ---------- */
+  .library { display: grid; grid-template-columns: 230px 1fr; gap: 20px; align-items: start; }
+  .streamers { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; }
+  .streamer { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; cursor: pointer; border: 0;
+    background: transparent; color: var(--muted); text-align: left; width: 100%; font-weight: 600; }
+  .streamer:hover { background: var(--panel); color: var(--text); }
+  .streamer.on { background: var(--panel2); color: var(--text); }
+  .streamer .n { margin-left: auto; font-size: 12px; color: var(--faint); font-weight: 500; }
+  .streamer .todo { background: var(--accent); color: #fff; font-size: 11px; border-radius: 99px; padding: 0 7px; margin-left: 6px; }
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+  .clipcard { background: var(--panel); border: 2px solid transparent; border-radius: var(--radius); overflow: hidden; cursor: pointer;
+    position: relative; transition: border-color .1s; }
+  .clipcard:hover { border-color: var(--line); }
+  .clipcard.sel { border-color: var(--accent); }
+  .clipcard .thumb { aspect-ratio: 9/16; background: #000 center/cover no-repeat; position: relative; }
+  .clipcard .check { position: absolute; top: 8px; left: 8px; width: 26px; height: 26px; border-radius: 8px;
+    background: rgba(0,0,0,.55); border: 2px solid rgba(255,255,255,.7); display: grid; place-items: center; color: #fff; font-weight: 800; }
+  .clipcard.sel .check { background: var(--accent); border-color: var(--accent); }
+  .clipcard .badges { position: absolute; bottom: 8px; left: 8px; right: 8px; display: flex; gap: 4px; flex-wrap: wrap; }
+  .clipcard .badges .tag { background: rgba(0,0,0,.65); }
+  .clipcard .badges .tag.done { background: rgba(20,80,45,.85); color: #7dffb2; }
+  .clipcard .rendering { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; font-weight: 700; }
+  .clipcard .info { padding: 10px 12px 12px; }
+  .clipcard .hook { font-weight: 650; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.9em; }
+  .clipcard .meta { color: var(--faint); font-size: 12px; margin-top: 4px; }
+
+  /* ---------- editor ---------- */
+  .editor { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 24px; align-items: start; }
+  .editor video { width: 100%; aspect-ratio: 9/16; background: #000; border-radius: var(--radius); display: block; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; background: transparent; color: var(--muted); padding: 10px 14px; cursor: pointer; font-weight: 700;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch { border: 2px solid transparent; border-radius: 999px; padding: 5px 12px 5px 8px; background: var(--panel2); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--muted); }
+  .swatch i { width: 14px; height: 14px; border-radius: 50%; }
+  .swatch.on { border-color: var(--accent); color: var(--text); }
+  .beat { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; margin-bottom: 8px; }
+  .platformbox { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; background: var(--panel2); }
+  .platformbox h3 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .pdot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .counter { color: var(--faint); font-size: 12px; float: right; font-weight: 500; }
+  .stickybar { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%); padding: 18px 0 4px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .note { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
+
+  /* ---------- post flow ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(5,6,10,.78); display: grid; place-items: center; z-index: 50; padding: 24px; }
+  .overlay[hidden] { display: none; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; width: min(1100px, 100%);
+    max-height: calc(100vh - 48px); overflow: auto; display: grid; grid-template-columns: 300px 1fr; }
+  .modal .left { padding: 20px; border-right: 1px solid var(--line); }
+  .modal .left video { width: 100%; aspect-ratio: 9/16; background: #000; border-radius: 12px; }
+  .modal .right { padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; }
+  .progress { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+  .pstep { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--panel2); font-weight: 600; }
+  .pstep.now { background: var(--accent); color: #fff; }
+  .pstep.done { color: var(--ok); }
+  ol.steps { margin: 0; padding-left: 20px; color: var(--muted); }
+  ol.steps li { margin: 4px 0; }
+
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: #2b3142; padding: 12px 18px;
+    border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); opacity: 0; transition: .2s; pointer-events: none; z-index: 80; font-weight: 600; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  pre.check { background: #0a0c10; border: 1px solid var(--line); border-radius: 12px; padding: 16px; white-space: pre-wrap;
+    font: 13px/1.6 ui-monospace, Consolas, "Cascadia Mono", Menlo, monospace; }
+  .spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: s 0.8s linear infinite; display: inline-block; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav>
+    <div class="brand"><img src="/icon.png" alt="">Clipper</div>
+    <button class="navbtn" data-page="clipping"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polygon points="10,8 16,12 10,16" fill="currentColor"/></svg>Clipping</button>
+    <button class="navbtn" data-page="clips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="9" rx="2"/><rect x="3" y="15" width="7" height="6" rx="2"/><rect x="14" y="15" width="7" height="6" rx="2"/></svg>Clips<span class="count" id="navcount" hidden></span></button>
+    <button class="navbtn" data-page="posting"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16,6 12,2 8,6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>Posting</button>
+    <button class="navbtn" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
+    <button class="navbtn" data-page="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22,4 12,14 9,11"/></svg>Check</button>
+    <div class="navspacer"></div>
+    <div class="statuspill" id="pill"><span class="dot" id="pilldot"></span><b id="pilltext">Not clipping</b><span id="pillsub"></span></div>
+    <button class="navbtn" id="quit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>Quit Clipper</button>
+  </nav>
+
+  <main id="main">
+    <!-- ===================== CLIPPING ===================== -->
+    <section class="page" id="page-clipping">
+      <h1>Clipping</h1>
+      <p class="sub">Watches the biggest streams and saves a clip whenever chat explodes. It keeps running if you close this window.</p>
+      <div class="card hero">
+        <div>
+          <div class="state"><span class="dot" id="statedot"></span><span id="statetext">Not clipping</span></div>
+          <div class="modes" id="modes">
+            <label class="opt"><input type="radio" name="mode" value="top" checked> Top streams of <b id="gamename" style="margin-left:4px">the game</b></label>
+            <label class="opt"><input type="radio" name="mode" value="test"> Test on another game: <input type="text" id="testgame" placeholder="Grand Theft Auto V" style="max-width:260px"></label>
+            <label class="opt"><input type="radio" name="mode" value="watch"> Specific streamers: <input type="text" id="targets" placeholder="twitch:kaicenat kick:adinross"></label>
+          </div>
+          <div class="help" id="restartnote" hidden>Settings changed: stop and start again to use them.</div>
+        </div>
+        <div><button class="btn primary big" id="startstop">▶ Start clipping</button></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Streams being clipped</h2>
+        <div id="rows"><div class="empty" style="padding:24px"><b>Nothing running</b>Press Start clipping.</div></div>
+        <div class="help" id="rule"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Activity</h2>
+          <button class="btn ghost" id="openclips">Open clips folder</button></div>
+        <div class="log" id="log" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <!-- ===================== CLIPS ===================== -->
+    <section class="page" id="page-clips" hidden>
+      <div id="libraryview">
+        <h1>Clips</h1>
+        <p class="sub">Tick the clips you want to post, then press Post. Click a clip to watch it and edit its captions.</p>
+        <div class="library">
+          <div class="streamers" id="streamers"></div>
+          <div>
+            <div class="toolbar">
+              <div class="seg" id="filter">
+                <button data-f="todo" class="on">To post</button><button data-f="posted">Posted</button><button data-f="all">All</button>
+              </div>
+              <button class="btn ghost" id="selectall">Select all</button>
+              <div class="spacer"></div>
+              <span class="help" id="selcount"></span>
+              <button class="btn primary" id="postsel" disabled>Post selected</button>
+            </div>
+            <div class="cards" id="cards"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="editorview" hidden>
+        <div class="row" style="margin-bottom:18px">
+          <button class="btn" id="back">← All clips</button>
+          <div style="flex:1">
+            <h1 id="ed-title" style="font-size:20px"></h1>
+            <div class="help" id="ed-sub"></div>
+          </div>
+        </div>
+        <div class="editor">
+          <div>
+            <video id="ed-video" controls playsinline></video>
+            <div class="row" style="margin-top:12px">
+              <button class="btn primary" id="ed-post">Post this clip</button>
+              <button class="btn" id="ed-reveal">Show file</button>
+              <button class="btn" id="ed-phone" title="Copies it to the POST folder for the phone app">Send to phone</button>
+              <button class="btn danger" id="ed-delete">Delete</button>
+            </div>
+            <div class="help" style="margin-top:14px">Posted on (click to change):</div>
+            <div class="row" id="ed-posted" style="margin-top:6px"></div>
+          </div>
+          <div>
+            <div class="tabs"><button data-t="video" class="on">On the video</button><button data-t="post">Post captions</button></div>
+
+            <div id="tab-video">
+              <div class="note" id="ed-norender" hidden></div>
+              <label class="field"><span>Headline <span class="counter" id="hookcount"></span></span>
+                <input type="text" id="ed-hook" maxlength="80" placeholder="Shown above the video for the whole clip"></label>
+              <label class="field"><span>Colour</span><div class="swatches" id="ed-moods"></div>
+                <div class="help">Used for the highlighted words and reaction captions.</div></label>
+              <label class="field"><span>Layout</span>
+                <div class="seg" id="ed-layout"><button data-l="blur">Blurred background</button><button data-l="crop">Fill the screen</button></div></label>
+              <div class="field"><span style="display:block;font-weight:600;margin-bottom:6px">Reaction captions</span>
+                <div id="ed-beats"></div>
+                <button class="btn" id="ed-addbeat">+ Add at the video's current time</button>
+                <div class="help">Big text that pops up for 2 seconds. Pause the video where you want it, then add.</div></div>
+              <div class="field" style="margin-top:18px">
+                <div class="row" style="justify-content:space-between"><span style="font-weight:600">Word-by-word captions</span>
+                  <label class="switch"><input type="checkbox" id="ed-speechon"><i></i></label></div>
+                <textarea id="ed-words" rows="4" style="margin-top:8px" placeholder="What the streamer says"></textarea>
+                <div class="help" id="ed-wordshelp">Fix misheard words here. Keep the same number of words to keep the exact timing.</div>
+              </div>
+              <div class="stickybar"><button class="btn primary" id="ed-render">Re-render the video</button><span class="help" id="ed-renderstate"></span></div>
+            </div>
+
+            <div id="tab-post" hidden>
+              <p class="help" style="margin-top:0">These are the texts you paste when posting. Changes are saved for this clip.</p>
+              <div id="ed-postboxes"></div>
+              <div class="stickybar"><button class="btn primary" id="ed-savepost">Save captions</button><span class="help" id="ed-savestate"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== POSTING ===================== -->
+    <section class="page" id="page-posting" hidden>
+      <h1>Posting</h1>
+      <p class="sub">Link the platforms you post to. When you press Post, Clipper goes through each one: it opens the upload page,
+        shows you the file to drag in and has the caption ready to paste. Make sure you're signed in to each site in your browser.</p>
+      <div id="platforms" class="grid2"></div>
+      <div class="card" style="margin-top:16px">
+        <div class="row" style="justify-content:space-between">
+          <div><b>Credit the streamer</b><div class="help">Adds "🎥 Name on Twitch" to every caption.</div></div>
+          <label class="switch"><input type="checkbox" id="credit"><i></i></label>
+        </div>
+      </div>
+      <div class="stickybar"><button class="btn primary" id="saveposting">Save</button></div>
+    </section>
+
+    <!-- ===================== SETTINGS ===================== -->
+    <section class="page" id="page-settings" hidden>
+      <h1>Settings</h1>
+      <p class="sub">Changes are saved to config.toml.</p>
+      <div id="settingsform" class="grid2"></div>
+      <div class="stickybar"><button class="btn primary" id="savesettings">Save settings</button><span class="help" id="settingsstate"></span></div>
+    </section>
+
+    <!-- ===================== CHECK ===================== -->
+    <section class="page" id="page-check" hidden>
+      <h1>Check</h1>
+      <p class="sub">Tests every part: video tools, speech-to-text, AI captions and your keys.</p>
+      <button class="btn primary" id="runcheck">Run the check</button>
+      <pre class="check" id="checkout" hidden></pre>
+    </section>
+  </main>
+</div>
+
+<!-- ===================== POST FLOW ===================== -->
+<div class="overlay" id="flow" hidden>
+  <div class="modal">
+    <div class="left">
+      <video id="fl-video" controls playsinline muted></video>
+      <div style="margin-top:10px;font-weight:700" id="fl-hook"></div>
+      <div class="help" id="fl-clipname"></div>
+    </div>
+    <div class="right">
+      <div class="row" style="justify-content:space-between">
+        <div class="help" id="fl-counter"></div>
+        <button class="btn ghost" id="fl-close">Close</button>
+      </div>
+      <h1 id="fl-title"></h1>
+      <div class="progress" id="fl-progress"></div>
+      <ol class="steps" id="fl-steps"></ol>
+      <div id="fl-fields"></div>
+      <div class="row">
+        <button class="btn" id="fl-open">Open upload page again</button>
+        <button class="btn" id="fl-reveal">Show the clip file</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ok big" id="fl-done">✓ Posted, next</button>
+        <button class="btn big" id="fl-skip">Skip</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const MOODCOLORS = { funny: "#ffd600", hype: "#39ff14", shock: "#ff3b30", rage: "#ff7800", sad: "#4da3ff", wholesome: "#ff69b4" };
+  const PCOLORS = { tiktok: "var(--tiktok)", youtube: "var(--youtube)", instagram: "var(--instagram)" };
+  const STEPS = {
+    tiktok: ["Drag the clip from the folder window onto the TikTok page (or click Select video)",
+             "Click the description box, delete what's there, paste (Ctrl+V)", "Click Post"],
+    youtube: ["Drag the clip onto the YouTube upload window", "Paste the title (copied), then copy and paste the description",
+              "Next → Next → Next, choose Public, Publish"],
+    instagram: ["Click + Create → Post and drag the clip in (videos become Reels)",
+                "Pick the 9:16 crop if asked, Next twice, paste the caption", "Click Share"],
+  };
+
+  function toast(msg, ms = 2600) {
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms);
+  }
+  async function api(path, body) {
+    const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Clipper": "1" }, body: JSON.stringify(body) };
+    const r = await fetch(path, opts);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ("Error " + r.status));
+    return data;
+  }
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); return ok;
+  }
+
+  // ---------------------------------------------------------------- navigation
+  let page = "clipping";
+  function show(p) {
+    page = p;
+    $$(".navbtn[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === p));
+    $$(".page").forEach(s => s.hidden = s.id !== "page-" + p);
+    if (p === "clips") { showLibrary(); loadClips(); }
+    if (p === "settings") loadSettings();
+    if (p === "posting") loadPosting();
+    $("#main").scrollTop = 0;
+  }
+  $$(".navbtn[data-page]").forEach(b => b.onclick = () => show(b.dataset.page));
+
+  // ---------------------------------------------------------------- state + clipping
+  let state = { running: false, platforms: [] };
+  async function refreshState() {
+    try { state = await api("/api/state"); } catch (e) { return; }
+    const on = state.running;
+    $("#pilldot").classList.toggle("on", on); $("#statedot").classList.toggle("on", on);
+    $("#pilltext").textContent = state.stopping ? "Stopping…" : on ? "Clipping" : "Not clipping";
+    $("#pillsub").textContent = on ? `${state.rows.length} streams` : "";
+    $("#statetext").textContent = state.stopping ? "Stopping… finishing clips in progress" : on ? state.mode : "Not clipping";
+    $("#gamename").textContent = state.game;
+    const btn = $("#startstop");
+    btn.textContent = on ? "■ Stop clipping" : "▶ Start clipping";
+    btn.classList.toggle("primary", !on); btn.disabled = state.stopping;
+    $$("#modes input").forEach(i => i.disabled = on);
+    $("#restartnote").hidden = !state.needs_restart;
+    $("#rule").textContent = `A clip is made when chat reaches x${state.multiplier} its normal speed and at least ${state.min_rate} messages a second.`;
+    renderRows(state.rows, on);
+  }
+  function renderRows(rows, on) {
+    if (!on) { $("#rows").innerHTML = `<div class="empty" style="padding:24px"><b>Nothing running</b>Press Start clipping.</div>`; return; }
+    if (!rows.length) { $("#rows").innerHTML = `<div class="empty" style="padding:24px"><b>Looking for streams…</b>This takes a few seconds.</div>`; return; }
+    const need = state.multiplier || 3;
+    $("#rows").innerHTML = `<table><tr><th>Streamer</th><th>Video</th><th class="num">Viewers</th><th class="num">Chat /s</th><th class="num">Normal</th><th>Biggest jump (10 min)</th><th class="num">Clips</th></tr>
+      ${rows.map(r => `<tr><td><b>${esc(r.name)}</b> <span class="tag">${esc(r.platform)}</span></td>
+        <td>${r.video ? '<span class="dot on"></span>recording' : '<span class="dot"></span><span class="help">waiting</span>'}</td>
+        <td class="num">${r.viewers ? r.viewers.toLocaleString() : "–"}</td>
+        <td class="num">${r.chat}</td><td class="num">${r.normal}</td>
+        <td>${r.peak ? "x" + r.peak : "–"}<span class="meter"><i style="width:${Math.min(100, (r.peak / need) * 100)}%"></i></span></td>
+        <td class="num">${r.clips}</td></tr>`).join("")}</table>`;
+  }
+  $("#startstop").onclick = async () => {
+    if (state.running) { $("#startstop").disabled = true; await api("/api/clipping/stop", {}); return refreshState(); }
+    const mode = $("#modes input[name=mode]:checked").value;
+    try {
+      await api("/api/clipping/start", { mode, game: $("#testgame").value, targets: $("#targets").value });
+      toast("Clipping started"); refreshState();
+    } catch (e) { toast(e.message); }
+  };
+  $("#openclips").onclick = () => api("/api/open-folder", { which: "clips" });
+
+  let logAfter = 0;
+  async function refreshLog() {
+    let data; try { data = await api("/api/log?after=" + logAfter); } catch (e) { return; }
+    if (!data.lines.length) return;
+    const el = $("#log"); const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    el.insertAdjacentHTML("beforeend", data.lines.map(l => `<div class="${l.level}"><span class="t">${l.time}</span>  ${esc(l.text)}</div>`).join(""));
+    logAfter = data.lines[data.lines.length - 1].id;
+    while (el.children.length > 600) el.firstChild.remove();
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  }
+
+  // ---------------------------------------------------------------- clips library
+  let clips = [], streamers = [], current = "", filter = "todo", selected = new Set();
+  const isPosted = c => Object.values(c.posted).length > 0 && Object.values(c.posted).every(Boolean);
+  async function loadClips() {
+    let data; try { data = await api("/api/clips"); } catch (e) { return; }
+    clips = data.clips; streamers = data.streamers;
+    const todo = clips.filter(c => !isPosted(c)).length;
+    $("#navcount").hidden = !todo; $("#navcount").textContent = todo;
+    for (const id of [...selected]) if (!clips.find(c => c.id === id)) selected.delete(id);
+    renderLibrary();
+  }
+  function renderLibrary() {
+    const total = clips.filter(c => !isPosted(c)).length;
+    $("#streamers").innerHTML = `<button class="streamer ${current ? "" : "on"}" data-s="">All streamers<span class="n">${clips.length}</span>${total ? `<span class="todo">${total}</span>` : ""}</button>` +
+      streamers.map(s => `<button class="streamer ${current === s.name ? "on" : ""}" data-s="${esc(s.name)}">${esc(s.name)}<span class="n">${s.count}</span>${s.to_post ? `<span class="todo">${s.to_post}</span>` : ""}</button>`).join("") +
+      (current ? `<button class="btn ghost" style="margin-top:8px" id="openstreamer">Open ${esc(current)}'s folder</button>` : "");
+    $$("#streamers .streamer").forEach(b => b.onclick = () => { current = b.dataset.s; renderLibrary(); });
+    if ($("#openstreamer")) $("#openstreamer").onclick = () => api("/api/open-folder", { which: "streamer", name: current });
+
+    const list = visible();
+    if (!clips.length) {
+      $("#cards").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>No clips yet</b>Start clipping, and clips appear here as soon as chat explodes.</div>`;
+    } else if (!list.length) {
+      $("#cards").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Nothing here</b>${filter === "todo" ? "Everything here is posted. 🎉" : "No clips match."}</div>`;
+    } else {
+      $("#cards").innerHTML = list.map(c => `<div class="clipcard ${selected.has(c.id) ? "sel" : ""}" data-id="${esc(c.id)}">
+        <div class="thumb" style="background-image:url('${c.thumb}')">
+          <div class="check" data-act="sel">${selected.has(c.id) ? "✓" : ""}</div>
+          <div class="badges">${state.platforms.map(p => `<span class="tag ${c.posted[p.key] ? "done" : ""}">${c.posted[p.key] ? "✓ " : ""}${esc(p.name.split(" ")[0])}</span>`).join("")}</div>
+          ${c.rendering ? `<div class="rendering"><span><span class="spin"></span> Rendering…</span></div>` : ""}
+        </div>
+        <div class="info"><div class="hook">${esc(c.hook || "No headline")}</div>
+          <div class="meta">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)} · #${c.number}</div></div></div>`).join("");
+    }
+    $$("#cards .clipcard").forEach(card => card.onclick = ev => {
+      const id = card.dataset.id;
+      if (ev.target.closest('[data-act="sel"]') || ev.ctrlKey || ev.metaKey) {
+        selected.has(id) ? selected.delete(id) : selected.add(id); renderLibrary();
+      } else openEditor(id);
+    });
+    $("#selcount").textContent = selected.size ? `${selected.size} selected` : "";
+    $("#postsel").disabled = !selected.size;
+    $("#postsel").textContent = selected.size ? `Post selected (${selected.size})` : "Post selected";
+  }
+  function visible() {
+    return clips.filter(c => (!current || c.streamer === current) &&
+      (filter === "all" || (filter === "posted" ? isPosted(c) : !isPosted(c))));
+  }
+  $$("#filter button").forEach(b => b.onclick = () => { filter = b.dataset.f; $$("#filter button").forEach(x => x.classList.toggle("on", x === b)); renderLibrary(); });
+  $("#selectall").onclick = () => {
+    const list = visible(); const all = list.every(c => selected.has(c.id));
+    list.forEach(c => all ? selected.delete(c.id) : selected.add(c.id)); renderLibrary();
+  };
+  $("#postsel").onclick = () => startFlow([...selected]);
+
+  // ---------------------------------------------------------------- editor
+  let ed = null;
+  function showLibrary() { $("#libraryview").hidden = false; $("#editorview").hidden = true; ed = null; const v = $("#ed-video"); v.pause(); v.removeAttribute("src"); v.load(); }
+  $("#back").onclick = () => { showLibrary(); loadClips(); };
+  async function openEditor(id) {
+    let d; try { d = await api("/api/clip?id=" + encodeURIComponent(id)); } catch (e) { return toast(e.message); }
+    ed = d;
+    $("#libraryview").hidden = true; $("#editorview").hidden = false; $("#main").scrollTop = 0;
+    $("#ed-title").textContent = d.hook || d.name;
+    $("#ed-sub").textContent = `${d.streamer} · ${d.date} ${d.time} · clip #${d.number}${d.title ? " · " + d.title : ""}`;
+    $("#ed-video").src = d.video;
+    $("#ed-hook").value = d.hook; hookCount();
+    $("#ed-moods").innerHTML = d.moods.map(m => `<button class="swatch ${m === d.mood ? "on" : ""}" data-m="${m}"><i style="background:${MOODCOLORS[m]}"></i>${m}</button>`).join("");
+    $$("#ed-moods .swatch").forEach(b => b.onclick = () => { ed.mood = b.dataset.m; $$("#ed-moods .swatch").forEach(x => x.classList.toggle("on", x === b)); });
+    $$("#ed-layout button").forEach(b => { b.classList.toggle("on", b.dataset.l === d.layout); b.onclick = () => { ed.layout = b.dataset.l; $$("#ed-layout button").forEach(x => x.classList.toggle("on", x === b)); }; });
+    ed.beats = (d.beats || []).map(b => ({ t: b.t, text: b.text })); renderBeats();
+    $("#ed-speechon").checked = d.speech_on;
+    $("#ed-words").value = d.words_text;
+    $("#ed-wordshelp").textContent = d.has_word_timings
+      ? "Fix misheard words here. Keep the same number of words to keep the exact timing."
+      : (d.words_text ? "This clip has no word timings saved, so re-rendering listens to the speech again." : "No speech was found in this clip.");
+    $("#ed-norender").hidden = d.can_rerender;
+    $("#ed-norender").textContent = "This clip's original was already deleted (it was posted), so the video's captions can't be changed anymore. You can still edit the post captions.";
+    $("#ed-render").disabled = !d.can_rerender || d.rendering;
+    $("#ed-renderstate").textContent = d.rendering ? "Rendering…" : "";
+    renderPostBoxes(); renderPosted();
+    setTab("video");
+    if (d.rendering) pollJob(id);
+  }
+  function hookCount() { $("#hookcount").textContent = `${$("#ed-hook").value.length}/80`; }
+  $("#ed-hook").oninput = hookCount;
+  function renderBeats() {
+    $("#ed-beats").innerHTML = ed.beats.map((b, i) => `<div class="beat">
+      <input type="number" step="0.1" min="0" value="${b.t}" data-i="${i}" data-k="t" title="Seconds into the clip">
+      <input type="text" value="${esc(b.text)}" data-i="${i}" data-k="text" maxlength="40" placeholder="e.g. WAIT FOR IT">
+      <button class="btn ghost" data-del="${i}" title="Remove">✕</button></div>`).join("");
+    $$("#ed-beats input").forEach(inp => inp.oninput = () => { const b = ed.beats[+inp.dataset.i]; b[inp.dataset.k] = inp.dataset.k === "t" ? parseFloat(inp.value) || 0 : inp.value; });
+    $$("#ed-beats [data-del]").forEach(x => x.onclick = () => { ed.beats.splice(+x.dataset.del, 1); renderBeats(); });
+  }
+  $("#ed-addbeat").onclick = () => { ed.beats.push({ t: Math.round($("#ed-video").currentTime * 10) / 10, text: "" }); renderBeats(); $$("#ed-beats input[data-k=text]").pop().focus(); };
+  function setTab(t) { $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === t)); $("#tab-video").hidden = t !== "video"; $("#tab-post").hidden = t !== "post"; }
+  $$(".tabs button").forEach(b => b.onclick = () => setTab(b.dataset.t));
+
+  $("#ed-render").onclick = async () => {
+    const body = { id: ed.id, hook: $("#ed-hook").value, mood: ed.mood, layout: ed.layout, beats: ed.beats,
+                   words_text: $("#ed-words").value, speech_on: $("#ed-speechon").checked };
+    try { await api("/api/clip/render", body); } catch (e) { return toast(e.message, 5000); }
+    $("#ed-render").disabled = true; $("#ed-renderstate").innerHTML = `<span class="spin"></span> Rendering… (about 20-60 seconds)`;
+    pollJob(ed.id);
+  };
+  async function pollJob(id) {
+    const j = await api("/api/clip/job?id=" + encodeURIComponent(id)).catch(() => ({ state: "none" }));
+    if (j.state === "running") return setTimeout(() => pollJob(id), 1500);
+    if (ed && ed.id === id) {
+      if (j.state === "done") { toast("Video updated ✓"); openEditor(id); }
+      else if (j.state === "error") { $("#ed-render").disabled = false; $("#ed-renderstate").textContent = "Failed: " + j.error; }
+    }
+  }
+
+  function renderPostBoxes() {
+    $("#ed-postboxes").innerHTML = state.platforms.map(p => {
+      const c = ed.post[p.key] || {};
+      const fields = p.key === "youtube"
+        ? `<label class="field"><span>Title <span class="counter" data-count="${p.key}-title"></span></span><input type="text" data-p="youtube" data-f="title" maxlength="100" value="${esc(c.title)}"></label>
+           <label class="field"><span>Description</span><textarea data-p="youtube" data-f="description" rows="4">${esc(c.description)}</textarea></label>`
+        : `<label class="field"><span>Caption</span><textarea data-p="${p.key}" data-f="caption" rows="5">${esc(c.caption)}</textarea></label>`;
+      return `<div class="platformbox"><h3><span class="pdot" style="background:${PCOLORS[p.key]}"></span>${esc(p.name)}
+        ${ed.accounts[p.key] ? `<span class="help">${esc(ed.accounts[p.key])}</span>` : ""}
+        ${ed.post_edited.includes(p.key) ? `<button class="btn ghost" style="margin-left:auto" data-reset="${p.key}">Reset to generated</button>` : ""}</h3>${fields}</div>`;
+    }).join("") || `<div class="note">No posting platforms are turned on. Go to Posting to link them.</div>`;
+    $$("#ed-postboxes [data-reset]").forEach(b => b.onclick = async () => {
+      const r = await api("/api/clip/post-captions", { id: ed.id, reset: b.dataset.reset });
+      ed.post = r.post; ed.post_edited = ed.post_edited.filter(k => k !== b.dataset.reset); renderPostBoxes();
+    });
+    const t = $('#ed-postboxes [data-f="title"]');
+    if (t) { const c = () => $('[data-count="youtube-title"]').textContent = `${t.value.length}/100`; t.oninput = c; c(); }
+  }
+  function collectPost(root) {
+    const post = {};
+    $$("[data-p]", root).forEach(el => { (post[el.dataset.p] = post[el.dataset.p] || {})[el.dataset.f] = el.value; });
+    return post;
+  }
+  $("#ed-savepost").onclick = async () => {
+    // Only platforms you actually changed are saved as edits; the rest keep following the headline.
+    const all = collectPost($("#ed-postboxes")), post = {};
+    for (const [k, fields] of Object.entries(all)) {
+      if (Object.entries(fields).some(([f, v]) => v !== (ed.post[k] || {})[f])) post[k] = fields;
+    }
+    const r = await api("/api/clip/post-captions", { id: ed.id, post });
+    ed.post = r.post; ed.post_edited = [...new Set([...ed.post_edited, ...Object.keys(post)])]; renderPostBoxes();
+    $("#ed-savestate").textContent = "Saved ✓"; setTimeout(() => $("#ed-savestate").textContent = "", 2500);
+  };
+  function renderPosted() {
+    $("#ed-posted").innerHTML = state.platforms.map(p => {
+      const when = ed.posted_at[p.key];
+      return `<button class="btn ${when ? "ok" : ""}" data-pp="${p.key}" title="${when ? "Posted " + esc(when.replace("T", " ")) + ". Click to undo" : "Mark as posted"}">${when ? "✓ " : ""}${esc(p.name.split(" ")[0])}</button>`;
+    }).join("");
+    $$("#ed-posted [data-pp]").forEach(b => b.onclick = async () => {
+      const k = b.dataset.pp, now = !ed.posted_at[k];
+      await api("/api/clip/posted", { id: ed.id, platform: k, posted: now });
+      if (now) ed.posted_at[k] = new Date().toISOString().slice(0, 19); else delete ed.posted_at[k];
+      renderPosted();
+    });
+  }
+  $("#ed-post").onclick = () => startFlow([ed.id]);
+  $("#ed-reveal").onclick = () => api("/api/clip/reveal", { id: ed.id });
+  $("#ed-phone").onclick = async () => { await api("/api/clip/to-phone", { id: ed.id }); toast("Sent to the phone app (POST folder)"); };
+  $("#ed-delete").onclick = async () => {
+    if (!confirm("Delete this clip? It goes to the 'Deleted clips' folder, so you can still get it back from there.")) return;
+    await api("/api/clip/delete", { id: ed.id }); toast("Clip deleted"); selected.delete(ed.id); showLibrary(); loadClips();
+  };
+
+  // ---------------------------------------------------------------- post flow
+  let flow = null;
+  async function startFlow(ids) {
+    if (!state.platforms.length) { toast("Turn on at least one platform in Posting first"); show("posting"); return; }
+    const items = [];
+    for (const id of ids) { try { items.push(await api("/api/clip?id=" + encodeURIComponent(id))); } catch (e) {} }
+    if (!items.length) return;
+    flow = { items, ci: 0, pi: 0, posted: {} };
+    $("#flow").hidden = false;
+    enterStep(true);
+  }
+  function stepPlatforms(item) { return state.platforms.filter(p => !item.posted_at[p.key]); }
+  function enterStep(firstOfClip) {
+    const item = flow.items[flow.ci];
+    const plats = stepPlatforms(item);
+    if (flow.pi >= plats.length) return nextClip();
+    const p = plats[flow.pi];
+    const v = $("#fl-video"); if (v.dataset.id !== item.id) { v.src = item.video; v.dataset.id = item.id; }
+    $("#fl-hook").textContent = item.hook; $("#fl-clipname").textContent = item.name;
+    $("#fl-counter").textContent = `Clip ${flow.ci + 1} of ${flow.items.length}`;
+    $("#fl-title").innerHTML = `<span class="pdot" style="background:${PCOLORS[p.key]};margin-right:10px"></span>Post to ${esc(p.name)}`;
+    $("#fl-progress").innerHTML = plats.map((x, i) => `<span class="pstep ${i < flow.pi ? "done" : i === flow.pi ? "now" : ""}">${i < flow.pi ? "✓ " : ""}${esc(x.name.split(" ")[0])}</span>`).join("");
+    $("#fl-steps").innerHTML = STEPS[p.key].map(s => `<li>${esc(s)}</li>`).join("");
+    const c = item.post[p.key] || {};
+    $("#fl-fields").innerHTML = p.key === "youtube"
+      ? `<label class="field"><span>Title <button class="btn ghost" data-copy="title">Copy</button></span><input type="text" data-f="title" value="${esc(c.title)}"></label>
+         <label class="field"><span>Description <button class="btn ghost" data-copy="description">Copy</button></span><textarea data-f="description" rows="4">${esc(c.description)}</textarea></label>`
+      : `<label class="field"><span>Caption <button class="btn ghost" data-copy="caption">Copy</button></span><textarea data-f="caption" rows="5">${esc(c.caption)}</textarea></label>`;
+    $$("#fl-fields [data-copy]").forEach(b => b.onclick = async (e) => { e.preventDefault();
+      const ok = await copy($(`#fl-fields [data-f="${b.dataset.copy}"]`).value); toast(ok ? "Copied: paste it with Ctrl+V" : "Couldn't copy"); });
+    // Do the busywork right away: copy the text, open the page, show the file.
+    const first = p.key === "youtube" ? c.title : c.caption;
+    copy(first).then(ok => ok && toast(`${p.key === "youtube" ? "Title" : "Caption"} copied. Paste it with Ctrl+V`, 3500));
+    api("/api/open-upload", { platform: p.key });
+    if (firstOfClip) api("/api/clip/reveal", { id: item.id });
+  }
+  async function saveFlowEdits() {
+    const item = flow.items[flow.ci], p = stepPlatforms(item)[flow.pi];
+    const vals = {}; $$("#fl-fields [data-f]").forEach(el => vals[el.dataset.f] = el.value);
+    const orig = item.post[p.key] || {};
+    if (Object.keys(vals).some(k => vals[k] !== orig[k])) {
+      await api("/api/clip/post-captions", { id: item.id, post: { [p.key]: vals } }).catch(() => {});
+    }
+  }
+  $("#fl-done").onclick = async () => {
+    const item = flow.items[flow.ci], p = stepPlatforms(item)[flow.pi];
+    await saveFlowEdits();
+    await api("/api/clip/posted", { id: item.id, platform: p.key, posted: true });
+    item.posted_at[p.key] = "now";
+    enterStep(false);  // the list of platforms left just got shorter, so the same index is the next one
+  };
+  $("#fl-skip").onclick = async () => { await saveFlowEdits(); flow.pi++; enterStep(false); };
+  $("#fl-open").onclick = () => { const item = flow.items[flow.ci]; api("/api/open-upload", { platform: stepPlatforms(item)[flow.pi].key }); };
+  $("#fl-reveal").onclick = () => api("/api/clip/reveal", { id: flow.items[flow.ci].id });
+  async function nextClip() {
+    await api("/api/clip/finish", { id: flow.items[flow.ci].id }).catch(() => {});
+    flow.ci++; flow.pi = 0;
+    if (flow.ci >= flow.items.length) return endFlow(true);
+    enterStep(true);
+  }
+  function endFlow(done) {
+    $("#flow").hidden = true; const v = $("#fl-video"); v.pause(); v.removeAttribute("src"); v.dataset.id = ""; v.load();
+    if (done) toast("All done ✓");
+    flow = null; selected.clear(); loadClips();
+    if (ed) openEditor(ed.id);
+  }
+  $("#fl-close").onclick = () => endFlow(false);
+
+  // ---------------------------------------------------------------- posting page
+  let postingData = null;
+  async function loadPosting() {
+    postingData = await api("/api/settings");
+    $("#credit").checked = postingData.credit;
+    $("#platforms").innerHTML = postingData.posting.map(p => `<div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0;display:flex;align-items:center;gap:8px"><span class="pdot" style="background:${PCOLORS[p.key]}"></span>${esc(p.name)}</h2>
+        <label class="switch" title="Post to ${esc(p.name)}"><input type="checkbox" data-en="${p.key}" ${p.enabled ? "checked" : ""}><i></i></label></div>
+      <label class="field"><span>Your account</span><input type="text" data-acc="${p.key}" value="${esc(p.account)}" placeholder="@yourname"></label>
+      <label class="field"><span>Extra hashtags</span><input type="text" data-tags="${p.key}" value="${esc(p.tags)}" placeholder="#gta6 #gaming"><div class="help">Added to every ${esc(p.name)} caption.</div></label>
+      <button class="btn" data-signin="${p.key}">Open ${esc(p.name.split(" ")[0])} to sign in</button></div>`).join("");
+    $$("[data-signin]").forEach(b => b.onclick = () => api("/api/open-upload", { platform: b.dataset.signin, signin: true }));
+  }
+  $("#saveposting").onclick = async () => {
+    const values = [{ section: "post", key: "platforms", value: $$("[data-en]").filter(i => i.checked).map(i => i.dataset.en) },
+                    { section: "post", key: "credit", value: $("#credit").checked }];
+    $$("[data-acc]").forEach(i => values.push({ section: "post", key: i.dataset.acc + "_account", value: i.value }));
+    $$("[data-tags]").forEach(i => values.push({ section: "post", key: i.dataset.tags + "_tags", value: i.value }));
+    await api("/api/settings", { values }); toast("Saved ✓"); refreshState();
+  };
+
+  // ---------------------------------------------------------------- settings
+  const GROUPS = { discovery: "Finding streams", clips: "Clips", detector: "When to clip", vertical: "Phone clips & captions",
+                   twitch: "Twitch key", youtube: "YouTube key", kick: "Kick key", anthropic: "AI captions key", phone: "Phone app" };
+  let settingsFields = [];
+  async function loadSettings() {
+    const data = await api("/api/settings"); settingsFields = data.fields;
+    const bySection = {};
+    settingsFields.forEach((f, i) => (bySection[f.section] = bySection[f.section] || []).push([f, i]));
+    $("#settingsform").innerHTML = Object.entries(bySection).map(([sec, list]) => `<div class="card"><h2>${GROUPS[sec] || sec}</h2>
+      ${list.map(([f, i]) => fieldHtml(f, i)).join("")}
+      ${["twitch", "youtube", "kick", "anthropic"].includes(sec) ? `<div class="row"><button class="btn" data-test="${sec}">Test key</button><span class="help" data-testout="${sec}"></span></div>` : ""}</div>`).join("");
+    $$("[data-test]").forEach(b => b.onclick = async () => {
+      const sec = b.dataset.test, values = {};
+      settingsFields.forEach((f, i) => { if (f.section === sec) values[f.key] = readField(f, i); });
+      const out = $(`[data-testout="${sec}"]`); out.innerHTML = `<span class="spin"></span>`;
+      const r = await api("/api/settings/test", { service: sec, values });
+      out.textContent = (r.ok ? "✔ " : r.ok === false ? "✘ " : "! ") + r.message;
+      out.style.color = r.ok ? "var(--ok)" : r.ok === false ? "var(--bad)" : "var(--warn)";
+    });
+    $$("[data-reveal]").forEach(b => b.onclick = () => { const i = $(`#f${b.dataset.reveal}`); i.type = i.type === "password" ? "text" : "password"; });
+  }
+  function fieldHtml(f, i) {
+    const help = f.help ? `<div class="help">${esc(f.help)}</div>` : "";
+    switch (f.kind) {
+      case "bool": return `<div class="row field" style="justify-content:space-between;margin-bottom:14px"><div><b>${esc(f.label)}</b>${help}</div>
+        <label class="switch"><input type="checkbox" id="f${i}" ${f.value ? "checked" : ""}><i></i></label></div>`;
+      case "select": return `<label class="field"><span>${esc(f.label)}</span><select id="f${i}">${f.options.map(o => `<option ${o === f.value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>${help}</label>`;
+      case "multi": return `<div class="field" style="margin-bottom:14px"><span style="display:block;font-weight:600;margin-bottom:6px">${esc(f.label)}</span><div class="row">${f.options.map(o =>
+        `<label class="row" style="gap:6px"><input type="checkbox" data-multi="${i}" value="${o}" ${(f.value || []).includes(o) ? "checked" : ""}>${({ twitch: "Twitch", youtube: "YouTube", kick: "Kick" })[o] || o}</label>`).join("")}</div>${help}</div>`;
+      case "language": return `<label class="field"><span>${esc(f.label)}</span><select id="f${i}"><option value="en" ${(f.value || []).length ? "selected" : ""}>English streams only</option><option value="" ${(f.value || []).length ? "" : "selected"}>Any language</option></select>${help}</label>`;
+      case "lines": return `<label class="field"><span>${esc(f.label)}</span><textarea id="f${i}" rows="3">${esc((f.value || []).join("\n"))}</textarea>${help}</label>`;
+      case "secret": return `<label class="field"><span>${esc(f.label)}</span><div class="row" style="flex-wrap:nowrap"><input type="password" id="f${i}" value="${esc(f.value)}" autocomplete="off"><button class="btn ghost" data-reveal="${i}" type="button">Show</button></div>${help}</label>`;
+      case "number": return `<label class="field"><span>${esc(f.label)}</span><input type="number" step="any" id="f${i}" value="${esc(f.value)}">${help}</label>`;
+      default: return `<label class="field"><span>${esc(f.label)}</span><input type="text" id="f${i}" value="${esc(f.value)}">${help}</label>`;
+    }
+  }
+  function readField(f, i) {
+    if (f.kind === "multi") return $$(`[data-multi="${i}"]`).filter(x => x.checked).map(x => x.value);
+    const el = $("#f" + i);
+    if (f.kind === "bool") return el.checked;
+    if (f.kind === "language") return el.value ? [el.value] : [];
+    if (f.kind === "lines") return el.value.split("\n");
+    return el.value;
+  }
+  $("#savesettings").onclick = async () => {
+    const values = settingsFields.map((f, i) => ({ section: f.section, key: f.key, value: readField(f, i) }));
+    try {
+      const r = await api("/api/settings", { values });
+      $("#settingsstate").textContent = r.restart ? "Saved ✓ Stop and start clipping to use the new settings." : "Saved ✓";
+      refreshState();
+    } catch (e) { $("#settingsstate").textContent = "Couldn't save: " + e.message; }
+  };
+
+  // ---------------------------------------------------------------- check + quit
+  $("#runcheck").onclick = async () => {
+    const out = $("#checkout"); out.hidden = false; out.innerHTML = `<span class="spin"></span> Checking… (this can take a few seconds)`;
+    const r = await api("/api/check");
+    out.innerHTML = esc(r.text).replace(/^(\s*✔.*)$/gm, '<span style="color:var(--ok)">$1</span>')
+      .replace(/^(\s*✘.*)$/gm, '<span style="color:var(--bad)">$1</span>').replace(/^(\s*!.*)$/gm, '<span style="color:var(--warn)">$1</span>');
+  };
+  $("#quit").onclick = async () => {
+    if (!confirm(state.running ? "Quit Clipper? Clipping stops (clips in progress are finished first)." : "Quit Clipper?")) return;
+    await api("/api/quit", {}).catch(() => {});
+    document.body.innerHTML = `<div class="empty" style="padding-top:30vh"><b>Clipper has stopped</b>You can close this window. Open Clipper from your desktop to start it again.</div>`;
+  };
+
+  // ---------------------------------------------------------------- loops
+  refreshState(); refreshLog(); loadClips();
+  setInterval(refreshState, 2000);
+  setInterval(refreshLog, 2000);
+  setInterval(() => { if (page === "clips" && !ed && !flow) loadClips(); else if (page !== "clips") loadClips(); }, 8000);
+  show("clipping");
+})();
+</script>
+</body>
+</html>

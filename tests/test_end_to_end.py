@@ -65,7 +65,9 @@ def test_clip_saved_with_preroll(tmp_path):
     assert len(phone) == 1
     vert = phone[0]
     assert re.fullmatch(r"Fake_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_1\.mp4", vert.name), vert.name
-    assert list(streamer.rglob("*.mp4")) == [vert]       # the 16:9 original was deleted
+    # the caption-free original waits in .source (deleted once posted), nothing else
+    assert sorted(p.relative_to(streamer).as_posix() for p in streamer.rglob("*.mp4")) == \
+        [f".source/{vert.name}", f"Phone clips/{vert.name}"]
     meta = json.loads((streamer / "Captions and details" / (vert.stem + ".json")).read_text())
     assert meta["chat_rate"] > meta["normal_rate"] * 3
     assert any("OMEGALUL" in line for line in meta["chat_sample"])

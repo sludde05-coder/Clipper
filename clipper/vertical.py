@@ -18,6 +18,7 @@ from .captions import build_ass
 from .config import VerticalConfig
 from .director import Plan, claude_plan, rule_plan
 from .transcribe import Transcript, transcribe
+from .proc import NO_WINDOW
 
 log = logging.getLogger(__name__)
 _slots: asyncio.Semaphore | None = None
@@ -25,7 +26,7 @@ _slots: asyncio.Semaphore | None = None
 
 def probe_duration(path: Path) -> float:
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, **NO_WINDOW)
     return float(r.stdout.strip() or 0)
 
 
@@ -34,7 +35,7 @@ def probe_video_duration(path: Path) -> float:
     sound runs the full time, which is how a "1-second" clip can still claim to be 50 s."""
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                         "stream=duration:format=duration", "-of", "json", str(path)],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, **NO_WINDOW)
     try:
         info = json.loads(r.stdout or "{}")
         streams = info.get("streams") or [{}]
@@ -85,7 +86,7 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         "-map", "[v]", "-map", "0:a?", *audio,
         "-c:v", "libx264", "-preset", cfg.preset, "-crf", str(cfg.crf), "-pix_fmt", "yuv420p",
         "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out.resolve()),
-        cwd=tmp, stderr=asyncio.subprocess.PIPE)
+        cwd=tmp, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
     _, err = await proc.communicate()
     return proc.returncode == 0, err.decode(errors="replace").strip()
 
@@ -107,8 +108,12 @@ def set_aside(clip: Path, meta_path: Path | None = None, dest: Path | None = Non
 
 async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
                           languages: list[str] | None = None, recent_dir: Path | None = None,
-                          meta_path: Path | None = None, aside_dir: Path | None = None) -> Path | None:
-    """Make <clip>_vertical.mp4 next to the clip and add the caption plan to its .json."""
+                          meta_path: Path | None = None, aside_dir: Path | None = None,
+                          plan: Plan | None = None, words: list | None = None) -> Path | None:
+    """Make the phone version of a clip and add the caption plan to its .json.
+
+    With `plan` (and `words`) given, it re-renders with those captions as they are: no
+    speech-to-text, no AI, no language check. That's how edits from the app are applied."""
     global _slots
     if _slots is None:
         _slots = asyncio.Semaphore(max(1, cfg.max_parallel))
@@ -117,17 +122,21 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
         length = await asyncio.to_thread(probe_duration, clip)
 
-        tr = await asyncio.to_thread(transcribe, clip, cfg.whisper_model) if cfg.speech_captions else Transcript([])
-        words = tr.words
-        if wrong_language(tr, languages):
-            moved = set_aside(clip, meta_path, aside_dir)
-            log.info("🌐 %s is in %s, not %s: moved to %s", clip.name, tr.language, "/".join(languages or []), moved)
-            return None
-        plan: Plan | None = None
-        if cfg.ai_captions:
-            plan = await claude_plan(clip, meta, words, length, cfg.ai_model, recent=load_recent(recent_dir or clip.parent))
-        plan = plan or rule_plan(meta, words)
-        remember_hook(recent_dir or clip.parent, plan.hook)
+        edited = plan is not None
+        if edited:
+            words = words or []
+        else:
+            tr = await asyncio.to_thread(transcribe, clip, cfg.whisper_model) if cfg.speech_captions else Transcript([])
+            words = tr.words
+            if wrong_language(tr, languages):
+                moved = set_aside(clip, meta_path, aside_dir)
+                log.info("🌐 %s is in %s, not %s: moved to %s", clip.name, tr.language, "/".join(languages or []), moved)
+                return None
+            if cfg.ai_captions:
+                plan = await claude_plan(clip, meta, words, length, cfg.ai_model,
+                                         recent=load_recent(recent_dir or clip.parent))
+            plan = plan or rule_plan(meta, words)
+            remember_hook(recent_dir or clip.parent, plan.hook)
         log.info("✍️  %s: \"%s\" (%s, %s, %d words, %d beats)", clip.name, plan.hook, plan.mood,
                  plan.source, len(words), len(plan.beats))
 
@@ -151,7 +160,9 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
                 return None
 
         meta["vertical"] = out.name
-        meta["captions"] = {**asdict(plan), "transcript": " ".join(w.text for w in words)}
+        meta["captions"] = {**asdict(plan), "transcript": " ".join(w.text for w in words),
+                            "words": [[round(w.start, 2), round(w.end, 2), w.text] for w in words],
+                            "layout": cfg.layout}
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
         log.info("📱 saved %s", out)
         return out

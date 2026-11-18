@@ -140,4 +140,4 @@ class ChannelSession:
         elif c.keep_originals:
             naming.move_into(out, folder / naming.ORIGINALS)
         else:
-            out.unlink(missing_ok=True)  # the phone version is the clip now
+            naming.move_into(out, folder / naming.SOURCE)  # deleted once posted, kept for caption edits

@@ -195,12 +195,30 @@ try {
         Warn "Skipping key setup. Open the clipper and choose option 6."
     }
 
+    Step "Adding Clipper to your desktop and Start menu"
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $here = (Get-Location).Path
+        foreach ($dir in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {
+            $lnk = $shell.CreateShortcut((Join-Path $dir 'Clipper.lnk'))
+            $lnk.TargetPath = Join-Path $here '.venv\Scripts\pythonw.exe'
+            $lnk.Arguments = '-m clipper app'
+            $lnk.WorkingDirectory = $here
+            $lnk.IconLocation = (Join-Path $here 'clipper\app_ui\icon.ico') + ',0'
+            $lnk.Description = 'Clipper: clip livestreams and post the clips'
+            $lnk.Save()
+        }
+        Ok "Shortcut 'Clipper' added to your desktop and Start menu"
+    } catch {
+        Warn "Couldn't add the shortcut ($_). Use Clipper.bat in the clipper folder instead."
+    }
+
     Write-Host ""
     Write-Host "=============================================="
     Write-Host "   All done!" -ForegroundColor Green
     Write-Host "=============================================="
-    Write-Host "To start: double-click  Clipper.bat  in $(Get-Location)"
-    Write-Host "Tip: try option 4 first to test it on a game that's live today."
+    Write-Host "To start: double-click  Clipper  on your desktop (or Clipper.bat in $(Get-Location))"
+    Write-Host "Tip: in the app, use 'Test on another game' first to try it on a game that's live today."
     exit 0
 } catch {
     if ("$_" -ne 'install failed') { Write-Host "  [X] Unexpected error: $_" -ForegroundColor Red }

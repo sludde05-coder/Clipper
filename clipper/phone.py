@@ -26,7 +26,8 @@ from urllib.parse import quote
 from aiohttp import web
 
 from .config import Config
-from .poster import TARGETS, VIDEO_EXT, build_captions, find_metadata, move_to_posted
+from .proc import NO_WINDOW
+from .poster import TARGETS, VIDEO_EXT, captions_for, find_metadata, move_to_posted
 
 log = logging.getLogger(__name__)
 APP_DIR = Path(__file__).parent / "phone_app"
@@ -99,7 +100,7 @@ class PhoneServer:
 
     def _describe(self, clip: Path) -> dict:
         meta = find_metadata(clip, self.clips_dir)
-        caps = build_captions(meta, clip, self.cfg.post.credit)
+        caps = captions_for(meta, clip, self.cfg.post)
         name = quote(clip.name)
         return {
             "name": clip.name,
@@ -167,7 +168,7 @@ class PhoneServer:
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "1", "-i", str(clip),
                 "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "5", str(out),
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, **NO_WINDOW)
             await proc.wait()
         if not out.exists():
             raise web.HTTPNotFound()

@@ -21,7 +21,7 @@ captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 
 > ⚡ **Easy install:** download the project, then double-click **`install.bat`** (Windows) or
 > **`install.command`** (Mac). It installs everything and walks you through your API keys.
-> Afterwards, double-click **`Clipper.bat`** / **`Clipper.command`** to open the menu.
+> Afterwards, double-click **Clipper** on your desktop (or `Clipper.bat` / `Clipper.command`) to open the app.
 > Full walkthrough: [SETUP.md](SETUP.md).
 
 ## How it works
@@ -87,6 +87,14 @@ file to drag in, and copies a caption written for that platform: the AI line, cr
 hashtags (`#shorts` for YouTube, a separate title, and so on). You paste and press Post. Posted clips move to
 `POST/posted` with their captions saved in a `.txt` file. It doesn't upload on its own: platforms keep uploads
 from unapproved apps private, and automating their websites gets accounts banned.
+
+## The Clipper app
+
+`python -m clipper app` (the desktop icon) opens a window on the PC with everything in one place:
+start and stop clipping and watch it work, browse every streamer's clips, edit the captions on the video (then
+re-render) and the post captions per platform, link TikTok / YouTube Shorts / Instagram, change settings, and run
+the check. Tick clips and press **Post** to be walked through posting each one: the upload page opens, the file is
+shown to drag in and the caption is copied. It runs on 127.0.0.1 only, and requests from other websites are refused.
 
 ## Phone app
 

@@ -25,28 +25,50 @@ It takes **5–15 minutes**. Each part shows `[OK]` (or ✔) as it finishes.
 **3. Enter your API keys when it asks.** For each service, it opens the right web page in your browser and lists
 what to click. You copy the key, paste it into the installer window, and it **checks the key works** before saving.
 Paste with **Ctrl+V** or right-click (Windows) or **Cmd+V** (Mac). You need at least **Twitch**.
-More detail on each key is in [step 6](#6-get-your-api-keys) below. Skipped one? You can add it later from the menu.
+More detail on each key is in [step 6](#6-get-your-api-keys) below. Skipped one? You can add it later in the app's **Settings**.
 
-**4. Start the clipper:** double-click **`Clipper.bat`** (Windows) or **`Clipper.command`** (Mac). A menu opens:
+**4. Open the Clipper app:** double-click **Clipper** on your desktop (the installer puts it there), or
+**`Clipper.bat`** in the clipper folder (Mac: **`Clipper.command`**). The app opens in its own window:
 
-```
-  1) Start clipping: the top 10 GTA 6 streams
-  2) Show who's in the top 10 right now
-  3) Clip specific streamers
-  4) Test on a game that's live right now
-  5) Open the clips folder
-  6) Set up or change API keys
-  7) Post clips on this PC (drop them in the POST folder)
-  8) Phone app: post clips from your phone
-  9) Check that everything works
- 10) Quit
-```
+| Tab | What you do there |
+|---|---|
+| **Clipping** | Press **Start clipping**. See which streamers are tracked, how fast their chat is moving, and what the clipper is doing |
+| **Clips** | Every streamer's clips. Click one to watch it and **edit its captions**; tick clips and press **Post** |
+| **Posting** | Link TikTok, YouTube Shorts and Instagram: turn them on, add your account name and extra hashtags, sign in |
+| **Settings** | Your keys (each with a **Test** button) and the main settings |
+| **Check** | Tests every part and tells you what to fix |
 
-Type a number and press Enter. **Ctrl+C** stops clipping and takes you back to the menu.
+Clipping keeps running when you close the window. Open Clipper again to get back to it, or press **Quit Clipper**
+to stop everything.
 
-**5. Test it today:** choose **4** and press Enter to use GTA V. Leave it running 15–30 minutes, then choose
-**5** to see your clips. On release day, choose **1**. Read [step 9](#9-release-day) for the
-release-day checklist (keep the computer awake!).
+**5. Test it today:** on the Clipping tab, choose **Test on another game** (it suggests GTA V) and press
+**Start clipping**. Leave it 15–30 minutes, then look in **Clips**. On release day, choose **Top streams** and
+press Start. Read [step 9](#9-release-day) for the release-day checklist (keep the computer awake!).
+
+### Editing captions
+
+Click a clip in **Clips**:
+- **On the video:** change the **headline**, the **colour**, the **layout** (blurred background or full screen), the
+  **reaction captions** (pause the video where you want one and press *Add*), and the **spoken words** (to fix
+  misheard ones). Then press **Re-render the video** (takes 20–60 seconds).
+- **Post captions:** edit the TikTok caption, YouTube title and description, and Instagram caption.
+  Press **Save captions**. *Reset to generated* undoes your changes.
+
+To make re-rendering possible, each clip's caption-free original is kept out of sight until the clip is posted
+(or deleted). After that, the video's captions can't be changed anymore, but the post captions still can.
+
+### Posting
+
+1. In **Posting**, turn on the platforms you use, and click **Open … to sign in** for each one, so your browser
+   is signed in.
+2. In **Clips**, tick the clips you want to post (the little box on each clip), and press **Post selected**.
+3. For each clip and each platform, Clipper opens the upload page, shows the clip file to drag in, and **copies the
+   caption** for you. Paste it (Ctrl+V), post it on the site, then press **✓ Posted, next** (or **Skip**).
+4. Posted clips get a ✓ per platform and move from **To post** to **Posted**.
+
+**Deleting** a clip moves it to `clips/Deleted clips`, so you can still get it back.
+
+The old text menu still exists as **`Clipper text menu.bat`**, if you ever want it.
 
 > **Installer failed?** It says which part failed and why. Fix that and run it again. It's safe to re-run,
 > and it skips whatever is already done. Or follow the manual steps below.

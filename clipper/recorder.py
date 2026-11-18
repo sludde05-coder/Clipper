@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from .proc import NO_WINDOW
 
 log = logging.getLogger(__name__)
 SEG_RE = re.compile(r"^seg_(\d+)_(\d+)\.ts$")
@@ -46,7 +47,7 @@ class Recorder:
     def _start(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         src_err, ff_err = open(self._src_log, "wb"), open(self._ff_log, "wb")
-        src = subprocess.Popen(self.source_cmd, stdout=subprocess.PIPE, stderr=src_err)
+        src = subprocess.Popen(self.source_cmd, stdout=subprocess.PIPE, stderr=src_err, **NO_WINDOW)
         ff = subprocess.Popen(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
              "-map", "0:v?", "-map", "0:a?", "-c", "copy",
@@ -54,7 +55,7 @@ class Recorder:
              "-reset_timestamps", "1",
              # Numbered, with a per-start prefix so a restart never overwrites older pieces.
              str(self.dir / f"seg_{int(time.time() * 1000)}_%06d.ts")],
-            stdin=src.stdout, stderr=ff_err)
+            stdin=src.stdout, stderr=ff_err, **NO_WINDOW)
         src_err.close()  # the child processes keep their own handles
         ff_err.close()
         src.stdout.close()  # ffmpeg owns the pipe now
@@ -182,7 +183,7 @@ class Recorder:
             "-map", "0:v?", "-map", "0:a?",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out),
-            stderr=asyncio.subprocess.PIPE)
+            stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
         _, err = await proc.communicate()
         shutil.rmtree(tmp, ignore_errors=True)
         if proc.returncode != 0:

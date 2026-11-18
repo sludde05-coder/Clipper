@@ -33,7 +33,7 @@ def set_value(text: str, section: str, key: str, value: str) -> str:
         lines += ["", f"[{section}]", f"{key} = {quoted}"]
         return "\n".join(lines) + "\n"
     end = next((i for i in range(start + 1, len(lines)) if re.match(r"^\s*\[", lines[i])), len(lines))
-    entry = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*)(\"[^\"]*\"|'[^']*'|\S+)(.*)$")
+    entry = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*)(\[[^\]]*\]|\"[^\"]*\"|'[^']*'|\S+)(.*)$")
     for i in range(start + 1, end):
         m = entry.match(lines[i])
         if m:

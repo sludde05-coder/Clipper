@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .transcribe import Word
+from .proc import NO_WINDOW
 
 log = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ def _extract_frames(clip: Path, times: list[float], width: int = 640) -> list[tu
     for t in times:
         r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.2f}", "-i", str(clip),
                             "-frames:v", "1", "-vf", f"scale={width}:-2", "-q:v", "5", "-f", "mjpeg", "pipe:1"],
-                           capture_output=True)
+                           capture_output=True, **NO_WINDOW)
         if r.returncode == 0 and r.stdout:
             frames.append((t, base64.b64encode(r.stdout).decode()))
     return frames

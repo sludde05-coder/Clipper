@@ -1,13 +1,16 @@
 @echo off
-rem Double-click this to open the clipper on Windows.
+rem Double-click this to open the Clipper app.
 cd /d "%~dp0"
-chcp 65001 >nul
-set PYTHONUTF8=1
-set PYTHONIOENCODING=utf-8
-if not exist ".venv\Scripts\python.exe" (
+if not exist ".venv\Scripts\pythonw.exe" (
   echo The clipper is not installed yet. Double-click install.bat first.
   pause
   exit /b 1
 )
-".venv\Scripts\python.exe" -m clipper %*
-if "%~1"=="" pause
+rem Quick check that everything is installed (e.g. after updating the files without re-running the installer).
+".venv\Scripts\python.exe" -c "import clipper.app" 2>nul
+if errorlevel 1 (
+  echo Clipper needs a quick update of its parts. Double-click install.bat, then try again.
+  pause
+  exit /b 1
+)
+start "" ".venv\Scripts\pythonw.exe" -m clipper app
