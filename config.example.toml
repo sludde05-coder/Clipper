@@ -16,7 +16,9 @@ languages = ["en"]                               # only English streams; [] = an
 [detector]
 short_window = 5        # seconds that count as "right now"
 baseline_window = 300   # seconds that count as "normal"
-multiplier = 3.0        # chat must be 3x normal...
+multiplier = 3.0        # chat must jump to 3x normal (for a chat at 3 msg/s; busier chats need less, quieter more)
+scale = 0.35            # how much the jump needed follows chat size (0 = the same for every chat)
+min_jump = 3.0          # ...and rise by at least 3 msgs/sec
 min_zscore = 4.0        # ...and clearly outside normal variation...
 min_rate = 2.0          # ...and at least 2 msgs/sec
 warmup = 60             # learn a channel's normal for 60 s before clipping
@@ -30,6 +32,8 @@ post_roll = 8           # seconds kept after it (22 + 8 = a 30-second clip)
 chat_delay = 0          # raise if clips start too late (stream delay)
 segment_seconds = 2
 quality = "best"        # or "720p", "480p" to save disk/bandwidth
+capture_before = 15     # extra seconds recorded before and after, so the AI can trim to the real moment
+capture_after = 10
 keep_originals = false  # true keeps the 16:9 originals (in <Streamer>/Originals) after the phone version
 
 [twitch]   # https://dev.twitch.tv/console/apps  → Register, "Confidential"
@@ -46,7 +50,9 @@ category_id = 0         # set if Kick names the GTA 6 category differently
 
 [vertical]              # phone version (9:16) with captions, made for every clip
 enabled = true
-layout = "blur"         # "blur": whole frame over a blurred background; "crop": fill the screen
+layout = "auto"         # "auto": streamer's webcam on top, gameplay below (blurred background if no webcam)
+                        # "facecam", "blur" (whole frame over a blurred background) or "crop" (fill the screen)
+ai_editors = true       # 5 AI editors: trim, webcam, captions, post text, and a final review
 speech_captions = true  # word-by-word captions of what the streamer says (local Whisper)
 whisper_model = "small" # "base" is faster, "medium" more accurate
 ai_captions = true      # Claude watches the clip and writes the hook + reaction captions

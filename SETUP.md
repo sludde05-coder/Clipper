@@ -45,6 +45,23 @@ to stop everything.
 **Start clipping**. Leave it 15–30 minutes, then look in **Clips**. On release day, choose **Top streams** and
 press Start. Read [step 9](#9-release-day) for the release-day checklist (keep the computer awake!).
 
+### The AI editing team
+
+Every new clip is edited by five AI editors (five copies of the same model, each with one job):
+
+| Editor | Job | Runs |
+|---|---|---|
+| **Trim** | Cuts the recording down to where the moment really starts and ends (10–50 s, usually 15–35) | side by side with Webcam |
+| **Webcam** | Finds the streamer's webcam in the picture, and where the gameplay action is | side by side with Trim |
+| **Captions** | The headline, reaction captions and highlighted words | side by side with Post text |
+| **Post text** | The TikTok caption, YouTube title + description and Instagram caption | side by side with Captions |
+| **Review** | Looks at the finished video; fixes a weak headline, a wrong webcam crop or captions in the way (one round) | last |
+
+To give the trim editor room, Clipper records 15 s more before and 10 s more after each explosion. The phone clip uses
+the **webcam-on-top** layout when the stream has a webcam (setting *Phone clip layout: auto*), and the blurred
+background otherwise. Without AI (or with *AI editing team* off in Settings), clips are cut to the usual 22 s before /
+8 s after. With Haiku the five editors cost about 0.2 cent per clip, with Opus roughly 10 cents.
+
 ### Editing captions
 
 Click a clip in **Clips**:
@@ -639,8 +656,8 @@ All settings are in `config.toml`. Open it, change a value, save, then stop (Ctr
 
 | Problem | Setting to change |
 |---|---|
-| Too many clips / boring clips | Raise `multiplier` from `3.0` to `4.0`, or raise `cooldown` |
-| Missing big moments | Lower `multiplier` to `2.5` |
+| Too many clips / boring clips | Raise *How big a chat explosion must be* (`multiplier`) or *Minimum rise in chat speed* (`min_jump`), or raise `cooldown` |
+| Missing big moments | Lower `multiplier` to `2.5`. Busy chats already need a smaller jump than quiet ones (about x2.4 at 6 msg/s, x1.7 at 15) |
 | Clips start too late (the moment is cut off) | Raise `pre_roll` (e.g. `25`) and lower `post_roll` to keep 30 s, or raise `chat_delay` (e.g. `3`) |
 | Clips end too early | Raise `post_roll` (the clip gets longer than 30 s), or lower `pre_roll` to keep 30 s |
 | Internet can't keep up / video stutters | Set `quality = "720p"`, or lower `top_n` to `5` |

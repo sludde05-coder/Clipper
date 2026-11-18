@@ -87,8 +87,9 @@ def build_captions(meta: dict, clip: Path, credit: bool = True) -> dict[str, dic
     where = PLATFORM_NAMES.get(meta.get("platform", ""), "")
     url = meta.get("url", "")
 
+    ai = meta.get("ai_post") or {}   # written by the post editor (editors.py), one text per platform
     line = _strip_tags(post) or hook or re.sub(r"[_-]+", " ", re.sub(r"_vertical$", "", clip.stem))
-    tags = _hashtags(post) or ["#gta6", "#clips"]
+    tags = [t for t in ai.get("hashtags", []) if t.startswith("#")] or _hashtags(post) or ["#gta6", "#clips"]
     if where and f"#{where.lower()}" not in [t.lower() for t in tags]:
         tags.append(f"#{where.lower()}")
     credit_line = f"🎥 {name} on {where}" if (credit and name and where) else ""
@@ -101,20 +102,20 @@ def build_captions(meta: dict, clip: Path, credit: bool = True) -> dict[str, dic
                 out.append(t)
         return " ".join(out)
 
-    title = (hook or line)
+    title = (ai.get("youtube_title") or hook or line)
     # Shorts show the title as the caption, so the credit goes there too: "<hook> | <Streamer> #shorts".
     tail = (f" | {name}" if credit and name else "") + " #shorts"
     yt_title = (title[: 100 - len(tail)].rstrip() + tail) if title else tail.strip()
     return {
-        "tiktok": {"caption": "\n".join(x for x in (line, credit_line, with_tags(["#fyp"])) if x)},
+        "tiktok": {"caption": "\n".join(x for x in (ai.get("tiktok") or line, credit_line, with_tags(["#fyp"])) if x)},
         "youtube": {
             "title": yt_title,
             "description": "\n".join(x for x in (
-                line,
+                ai.get("youtube_description") or line,
                 f"{credit_line}: {url}" if credit_line and url else credit_line,
                 with_tags(["#shorts"])) if x),
         },
-        "instagram": {"caption": "\n\n".join(x for x in (line, credit_line, with_tags(["#reels"])) if x)},
+        "instagram": {"caption": "\n\n".join(x for x in (ai.get("instagram") or line, credit_line, with_tags(["#reels"])) if x)},
     }
 
 

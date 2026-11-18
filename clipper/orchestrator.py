@@ -32,7 +32,8 @@ class Orchestrator:
                          "name": s.stream.display_name or s.stream.channel, "url": s.stream.url,
                          "viewers": s.stream.viewers, "title": s.stream.title, "video": s.recorder.live,
                          "chat": round(s.detector.last_rate, 1), "normal": round(s.detector.last_baseline, 1),
-                         "peak": round(s.detector.peak_ratio(), 1), "clips": s.clips_saved})
+                         "peak": round(s.detector.peak_ratio(), 1), "need": round(s.detector.required_ratio(), 1),
+                         "clips": s.clips_saved})
         return rows
 
     async def stop_all(self) -> None:
@@ -75,7 +76,7 @@ class Orchestrator:
             lines.append(f"{key:32} {'live' if s.recorder.live else '--':6} "
                          f"{s.detector.last_rate:7.1f} {s.detector.last_baseline:7.1f} "
                          f"{('x%.1f' % peak) if peak else '-':>9} {s.clips_saved:5}")
-        lines.append(f"A clip is made when chat reaches x{need:g} its normal speed AND at least "
+        lines.append(f"A clip is made when chat jumps to about x{need:g} its normal speed (less for busy chats, more for quiet ones) AND at least "
                      f"{self.cfg.detector.min_rate:g} messages/s.")
         lines.append("'video --' means nothing is being recorded.")
         log.info("status\n  %s", "\n  ".join(lines))

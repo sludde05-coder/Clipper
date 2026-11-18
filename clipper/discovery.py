@@ -15,6 +15,7 @@ A platform without credentials is skipped with a warning.
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import aiohttp
@@ -25,6 +26,37 @@ from .models import Stream, parse_target
 
 log = logging.getLogger(__name__)
 APP_UA = {"User-Agent": "Clipper/1.0 (+https://github.com/sludde05-coder/clipper)"}
+
+
+_AFFIX = re.compile(r"^(ttv|yt)+|(live|tv|ttv|yt|official|irl)+$")
+
+
+def person_key(st: Stream) -> str:
+    """Who is streaming, the same on every platform: 'xQc' (Twitch) and 'xQc Live' (YouTube) -> 'xqc'."""
+    name = (st.display_name or st.channel) if st.platform == "youtube" else st.channel
+    key = re.sub(r"[^a-z0-9]", "", (name or "").lower().split("#")[0])
+    for _ in range(3):  # strip "ttv", "live", "tv" ... from either end
+        shorter = _AFFIX.sub("", key)
+        if len(shorter) < 3 or shorter == key:
+            break
+        key = shorter
+    return key or st.key
+
+
+def one_per_streamer(streams) -> list[Stream]:
+    """Someone streaming on two platforms at once is clipped once: on the stream with the most viewers."""
+    best: dict[str, Stream] = {}
+    for st in streams:
+        k = person_key(st)
+        if k not in best or st.viewers > best[k].viewers:
+            if k in best:
+                log.info("%s is also live on %s with fewer viewers: clipping only %s",
+                         st.display_name or st.channel, best[k].platform, st.key)
+            best[k] = st
+        else:
+            log.info("%s is also live on %s with fewer viewers: clipping only %s",
+                     st.display_name or st.channel, st.platform, best[k].key)
+    return list(best.values())
 
 
 class Discovery:
@@ -57,7 +89,7 @@ class Discovery:
         for st in found:
             if st.viewers >= d.min_viewers and st.viewers > best.get(st.key, Stream("", "", "")).viewers:
                 best[st.key] = st
-        ranked = sorted(best.values(), key=lambda s: s.viewers, reverse=True)[: d.top_n]
+        ranked = sorted(one_per_streamer(best.values()), key=lambda s: s.viewers, reverse=True)[: d.top_n]
         pinned = [parse_target(t) for t in d.always_track]
         keys = {s.key for s in ranked}
         return ranked + [p for p in pinned if p.key not in keys]

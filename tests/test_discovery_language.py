@@ -80,3 +80,20 @@ def test_english_only():
 def test_any_language():
     names, _ = run([])
     assert set(names) == {"en1", "es1", "ytEN", "ytBR", "ytLBL", "kicken", "kicktr", "kicknone"}
+
+
+def test_multistreamer_is_clipped_once_on_the_bigger_stream():
+    from clipper.discovery import one_per_streamer, person_key
+    from clipper.models import Stream
+    streams = [
+        Stream("twitch", "xqc", "u", 60000, "", "xQc"),
+        Stream("kick", "xqc", "u", 45000, "", "xqc"),
+        Stream("youtube", "vid1", "u", 9000, "", "KaiCenat Live"),
+        Stream("twitch", "kaicenat", "u", 80000, "", "KaiCenat"),
+        Stream("twitch", "ttvlacy", "u", 5000, "", "TTVLacy"),
+        Stream("youtube", "vid2", "u", 7000, "", "Lacy"),
+        Stream("twitch", "jynxzi", "u", 30000, "", "Jynxzi"),
+    ]
+    kept = sorted(s.key for s in one_per_streamer(streams))
+    assert kept == ["twitch:jynxzi", "twitch:kaicenat", "twitch:xqc", "youtube:vid2"]
+    assert person_key(Stream("twitch", "ttv", "u", 1, "", "")) == "ttv"            # never stripped to nothing

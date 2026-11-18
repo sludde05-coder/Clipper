@@ -21,7 +21,11 @@ from dataclasses import dataclass
 class DetectorConfig:
     short_window: int = 5          # seconds of chat that make up "right now"
     baseline_window: int = 300     # seconds of history that make up "normal"
-    multiplier: float = 3.0        # now must be at least this many times normal
+    multiplier: float = 3.0        # the jump needed for a chat that normally runs at 3 msg/s...
+    scale: float = 0.35            # ...smaller for busier chats, bigger for quieter ones (0 = the same for all)
+    min_multiplier: float = 1.5    # never less than this, however busy the chat
+    max_multiplier: float = 4.5    # never more than this, however quiet
+    min_jump: float = 3.0          # and chat must rise by at least this many msgs/sec over normal
     min_zscore: float = 4.0        # ...and this many spreads above normal
     min_rate: float = 2.0          # ...and at least this many msgs/sec
     warmup: int = 60               # seconds of history needed before firing
@@ -52,6 +56,17 @@ class SpikeDetector:
         self.last_rate = 0.0
         self.last_baseline = 0.0
         self._ratios: deque[tuple[float, float]] = deque()  # (time, rate/normal), for the status table
+
+    def required_ratio(self, base: float | None = None) -> float:
+        """How many times its normal speed this chat must reach to count as an explosion.
+
+        Busy chats can't triple (thousands of people are already typing, slow mode, rate limits),
+        while a quiet chat triples from a handful of messages. So the jump needed shrinks as the
+        normal speed grows: about x3.8 at 1.5 msg/s, x3 at 3, x2.4 at 6, x1.7 at 15."""
+        cfg = self.cfg
+        base = self.last_baseline if base is None else base
+        need = cfg.multiplier * (3.0 / max(base, 0.1)) ** cfg.scale
+        return max(cfg.min_multiplier, min(cfg.max_multiplier, need))
 
     def peak_ratio(self, window: float = 600, now: float | None = None) -> float:
         """Biggest jump over normal in the last `window` seconds (shown in the status table)."""
@@ -122,7 +137,8 @@ class SpikeDetector:
             return None
         if now - self._last_spike < cfg.cooldown:
             return None
-        if rate < cfg.min_rate or rate < base * cfg.multiplier or z < cfg.min_zscore:
+        if (rate < cfg.min_rate or rate < base * self.required_ratio(base) or rate - base < cfg.min_jump
+                or z < cfg.min_zscore):
             return None
 
         # Walk backwards to find where the surge began (max 30 s back).

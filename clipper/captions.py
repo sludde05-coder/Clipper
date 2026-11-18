@@ -61,9 +61,11 @@ def group_words(words: list[Word], max_words: int = 3, max_gap: float = 0.6) -> 
 
 
 def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur",
-              font: str = "Arial") -> str:
+              font: str = "Arial", positions: tuple | None = None, hook_anchor: int = 2) -> str:
+    """positions = (hook_y, speech_y, beat_y) for layouts whose geometry depends on the clip (webcam on top);
+    hook_anchor 2 puts the headline's bottom at hook_y, 5 centres it there (on the seam)."""
     accent = COLORS.get(plan.mood, COLORS["hype"])
-    hook_y, speech_y, beat_y = POSITIONS.get(layout, POSITIONS["blur"])
+    hook_y, speech_y, beat_y = positions or POSITIONS.get(layout, POSITIONS["blur"])
     white, black = ass_color((255, 255, 255)), ass_color((0, 0, 0))
     acc = ass_color(accent)
     box = ass_color((0, 0, 0), alpha=0x30)
@@ -86,7 +88,7 @@ def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur"
     hook = clean(plan.hook).upper()
     if hook:
         out.append(f"Dialogue: 2,{ts(0)},{ts(length)},Hook,,0,0,0,,"
-                   f"{{\\an2\\pos(540,{hook_y})\\fad(250,0)}}{hook}")
+                   f"{{\\an{hook_anchor}\\pos(540,{hook_y})\\fad(250,0)}}{hook}")
 
     emphasis = {e.lower().strip(".,!?") for e in plan.emphasis}
     for group in group_words(words):

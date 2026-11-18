@@ -27,6 +27,7 @@ captions** ready for TikTok, YouTube Shorts and Instagram Reels.
 ## How it works
 
 1. **Discovery.** Asks each platform's API for live streams of the game and keeps the top 10 by viewers.
+   Someone streaming on several platforms at once is clipped once, on the stream with the most viewers.
    **English streams only** by default (`languages` in config). Twitch and Kick label each stream's language.
    YouTube often doesn't, so its titles are checked for other languages, and every clip's speech is checked
    again: clips that are clearly in another language go to that streamer's `Other languages` folder instead.

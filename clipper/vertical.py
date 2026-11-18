@@ -16,8 +16,10 @@ from pathlib import Path
 
 from .captions import build_ass
 from .config import VerticalConfig
-from .director import Plan, claude_plan, rule_plan
+from .director import hook_is_weak, Plan, claude_plan, rule_plan
 from .transcribe import Transcript, transcribe
+from .transcribe import Word
+from .editors import default_trim, facecam_editor, post_editor, review_editor, trim_editor
 from .proc import NO_WINDOW
 from . import progress
 
@@ -45,7 +47,67 @@ def probe_video_duration(path: Path) -> float:
         return 0.0
 
 
-def filter_graph(layout: str, focus_x: float, safe: bool = False) -> str:
+def probe_size(path: Path) -> tuple[int, int]:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                        "-of", "csv=p=0", str(path)], capture_output=True, text=True, **NO_WINDOW)
+    try:
+        w, h = (int(x) for x in r.stdout.strip().split(",")[:2])
+        return w, h
+    except ValueError:
+        return 1920, 1080
+
+
+def _even(x: float) -> int:
+    return max(2, int(round(x / 2)) * 2)
+
+
+def facecam_geometry(box: list, iw: int, ih: int, action_x: float) -> dict:
+    """Where to cut the webcam (top) and the gameplay (bottom) from a source frame of iw x ih."""
+    fx, fy, fw, fh = box[0] * iw, box[1] * ih, box[2] * iw, box[3] * ih
+    ht = min(800, max(480, _even(1080 * fh / max(fw, 1))))          # top part height on the 1080x1920 canvas
+    a = 1080 / ht
+    cw, ch = (fh * a, fh) if fw / max(fh, 1) > a else (fw, fw / a)   # cut the webcam to exactly that shape
+    cx, cy = fx + (fw - cw) / 2, fy + (fh - ch) / 2
+    hb = 1920 - ht
+    b = 1080 / hb
+    gw, gh = ih * b, ih
+    if gw > iw:
+        gw, gh = iw, iw / b
+    gx = min(max(0.0, action_x * iw - gw / 2), iw - gw)
+    gy = (ih - gh) / 2
+    def fit(w, h, x, y):
+        """Round to even pixels and keep the box inside the frame (ffmpeg refuses crops that stick out)."""
+        w, h = min(_even(w), iw - iw % 2), min(_even(h), ih - ih % 2)
+        x = min(max(0, _even(x) if x >= 1 else 0), iw - w)
+        y = min(max(0, _even(y) if y >= 1 else 0), ih - h)
+        return w, h, x, y
+
+    return {"ht": ht, "hb": hb,
+            "cam": fit(cw, ch, cx, cy),
+            "game": fit(gw, gh, gx, gy),
+            # headline centred on the seam, spoken words low over the gameplay, reactions in its middle
+            "positions": (ht, ht + int(hb * 0.70), ht + int(hb * 0.36))}
+
+
+def resolve_layout(layout: str, facecam: list | None) -> str:
+    if layout in ("auto", "facecam"):
+        return "facecam" if facecam else "blur"
+    return layout if layout in ("blur", "crop") else "blur"
+
+
+def filter_graph(layout: str, focus_x: float, safe: bool = False, geo: dict | None = None) -> str:
+    if layout == "facecam" and geo:
+        src = "[0:v]setpts=N/FRAME_RATE/TB," if safe else "[0:v]"
+        cw, ch, cx, cy = geo["cam"]
+        gw, gh, gx, gy = geo["game"]
+        return (f"{src}split[f][g];"
+                f"[f]crop={cw}:{ch}:{cx}:{cy},scale=1080:{geo['ht']},setsar=1[top];"
+                f"[g]crop={gw}:{gh}:{gx}:{gy},scale=1080:{geo['hb']},setsar=1[bot];"
+                f"[top][bot]vstack=inputs=2,ass=captions.ass[v]")
+    return _filter_graph(layout, focus_x, safe)
+
+
+def _filter_graph(layout: str, focus_x: float, safe: bool = False) -> str:
     # Safe mode times frames by counting them instead of trusting the video's own clock,
     # which can jump (e.g. around Twitch ad breaks) and make ffmpeg drop most of the video.
     src = "[0:v]setpts=N/FRAME_RATE/TB," if safe else "[0:v]"
@@ -106,12 +168,12 @@ async def _transcribe_with_limit(clip: Path, model: str) -> Transcript:
 
 
 async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x: float,
-                  safe: bool) -> tuple[bool, str]:
+                  safe: bool, layout: str | None = None, geo: dict | None = None) -> tuple[bool, str]:
     audio = ["-af", "asetpts=N/SR/TB"] if safe else []
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         *(["-fflags", "+genpts"] if safe else []), "-i", str(clip.resolve()),
-        "-filter_complex", filter_graph(cfg.layout, focus_x, safe),
+        "-filter_complex", filter_graph(layout or cfg.layout, focus_x, safe, geo),
         "-map", "[v]", "-map", "0:a?", *audio,
         *PLATFORM_VIDEO, "-preset", cfg.preset, "-crf", str(cfg.crf),
         *PLATFORM_AUDIO, "-movflags", "+faststart", str(out.resolve()),
@@ -123,6 +185,72 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         await proc.wait()
         return False, f"rendering took over {ENCODE_TIMEOUT // 60} minutes and was stopped"
     return proc.returncode == 0, err.decode(errors="replace").strip()
+
+
+async def _safe(job):
+    """Run one editor; if it fails in an unexpected way, carry on without it."""
+    try:
+        return await job
+    except Exception as e:  # noqa: BLE001
+        log.warning("an AI editor failed (%s: %s); carrying on without it", type(e).__name__, e)
+        return None
+
+
+async def _render_once(clip: Path, out: Path, plan: Plan, words: list, length: float, layout: str,
+                       cfg: VerticalConfig) -> bool:
+    geo = None
+    if layout == "facecam" and plan.facecam:
+        iw, ih = await asyncio.to_thread(probe_size, clip)
+        geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x)
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "captions.ass").write_text(
+            build_ass(plan, words, length, layout, cfg.font,
+                      positions=geo["positions"] if geo else None, hook_anchor=5 if geo else 2), encoding="utf-8")
+        want = probe_video_duration(clip) or length
+        for safe in (False, True):
+            ok, err = await _encode(clip, out, tmp, cfg, plan.crop_focus_x, safe, layout=layout, geo=geo)
+            got = probe_video_duration(out) if ok else 0.0
+            if ok and got >= want - 1.5:
+                return True
+            log.warning("%s: phone version came out %.1f s instead of %.1f s%s", clip.name, got, want,
+                        ", rendering again in safe mode" if not safe else "")
+    out.unlink(missing_ok=True)
+    log.error("couldn't make a proper phone version of %s (%s). The original clip is fine.",
+              clip.name, err[-300:] or "video too short")
+    return False
+
+
+async def _cut(clip: Path, start: float, end: float) -> bool:
+    """Cut the recording down to start..end (frame-accurate), in place."""
+    tmp = clip.with_name(clip.stem + ".rendering.mp4")
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", str(clip),
+        "-t", f"{end - start:.3f}", "-map", "0:v?", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp),
+        stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
+    _, err = await proc.communicate()
+    if proc.returncode != 0 or probe_video_duration(tmp) < (end - start) * 0.8:
+        tmp.unlink(missing_ok=True)
+        log.warning("couldn't cut %s to the moment (%s); keeping the whole recording", clip.name,
+                    err.decode(errors="replace")[-200:])
+        return False
+    tmp.replace(clip)
+    return True
+
+
+def shift_words(words: list, start: float, end: float) -> list:
+    return [Word(w.start - start, w.end - start, w.text) for w in words if w.end > start and w.start < end]
+
+
+def shift_meta(meta: dict, start: float, end: float) -> dict:
+    meta = dict(meta)
+    if "explosion_offset" in meta:
+        meta["explosion_offset"] = round(float(meta["explosion_offset"]) - start, 1)
+    if meta.get("chat_timeline"):
+        meta["chat_timeline"] = [[round(float(t) - start, 1), u, m] for t, u, m in meta["chat_timeline"]
+                                 if start <= float(t) <= end]
+    return meta
 
 
 def needs_upgrade(clip: Path) -> bool:
@@ -190,8 +318,14 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
 async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
                           languages: list[str] | None = None, recent_dir: Path | None = None,
                           meta_path: Path | None = None, aside_dir: Path | None = None,
-                          plan: Plan | None = None, words: list | None = None) -> Path | None:
+                          plan: Plan | None = None, words: list | None = None,
+                          trim_window: tuple[float, float] | None = None) -> Path | None:
     """Make the phone version of a clip and add the caption plan to its .json.
+
+    For a new clip this runs the AI editing team (see editors.py): trim + webcam editors side by
+    side, then the clip is cut to the moment, caption + post editors side by side, the render, and
+    a final review that can ask for one fix. trim_window = (seconds before, after) the explosion to
+    keep when the trim editor isn't available.
 
     With `plan` (and `words`) given, it re-renders with those captions as they are: no
     speech-to-text, no AI, no language check. That's how edits from the app are applied."""
@@ -204,6 +338,7 @@ async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = N
         length = await asyncio.to_thread(probe_duration, clip)
 
         edited = plan is not None
+        use_ai = cfg.ai_captions and cfg.ai_editors
         if edited:
             words = words or []
         else:
@@ -214,39 +349,79 @@ async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = N
                 moved = set_aside(clip, meta_path, aside_dir)
                 log.info("🌐 %s is in %s, not %s: moved to %s", clip.name, tr.language, "/".join(languages or []), moved)
                 return None
+            # 1 + 2: trim and webcam editors, side by side
+            trim, face = None, None
+            if use_ai:
+                progress.step(clip.name, "Trim and webcam editors are watching the clip")
+                trim, face = await asyncio.gather(_safe(trim_editor(clip, meta, words, length, cfg.ai_model)),
+                                                  _safe(facecam_editor(clip, length, cfg.ai_model)))
+            if trim is None and trim_window:
+                offset = float(meta.get("explosion_offset", length - trim_window[1]))
+                trim = default_trim(offset, length, *trim_window)
+            if trim is not None and (trim.start > 0.05 or trim.end < length - 0.05):
+                progress.step(clip.name, "Cutting to the moment")
+                if await _cut(clip, trim.start, trim.end):
+                    words = shift_words(words, trim.start, trim.end)
+                    meta = shift_meta(meta, trim.start, trim.end)
+                    length = await asyncio.to_thread(probe_duration, clip)
+                    log.info("✂️  %s: kept %.0f-%.0f s (%s)", clip.name, trim.start, trim.end, trim.why or trim.source)
+            if trim is not None:
+                meta["trim"] = {"start": trim.start, "end": trim.end, "why": trim.why, "by": trim.source}
+            # 3 + 4: caption and post editors, side by side
+            post = None
             if cfg.ai_captions:
-                progress.step(clip.name, "Writing the captions")
-                plan = await claude_plan(clip, meta, words, length, cfg.ai_model,
-                                         recent=load_recent(recent_dir or clip.parent))
+                progress.step(clip.name, "Caption and post editors are writing" if use_ai else "Writing the captions")
+                captions_job = claude_plan(clip, meta, words, length, cfg.ai_model,
+                                           recent=load_recent(recent_dir or clip.parent))
+                if use_ai:
+                    plan, post = await asyncio.gather(_safe(captions_job), _safe(post_editor(
+                        meta, "", trim.why if trim else "", words, cfg.ai_model)))
+                else:
+                    plan = await captions_job
             plan = plan or rule_plan(meta, words)
+            if face:
+                plan.facecam, plan.crop_focus_x = face[0], face[1]
+            if post:
+                meta["ai_post"] = post
             remember_hook(recent_dir or clip.parent, plan.hook)
         log.info("✍️  %s: \"%s\" (%s, %s, %d words, %d beats)", clip.name, plan.hook, plan.mood,
                  plan.source, len(words), len(plan.beats))
 
         out = out or clip.with_name(clip.stem + "_vertical.mp4")
         out.parent.mkdir(parents=True, exist_ok=True)
+        layout = resolve_layout(cfg.layout, plan.facecam)
         progress.step(clip.name, "Rendering the video")
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "captions.ass").write_text(
-                build_ass(plan, words, length, cfg.layout, cfg.font), encoding="utf-8")
-            want = probe_video_duration(clip) or length
-            for safe in (False, True):
-                ok, err = await _encode(clip, out, tmp, cfg, plan.crop_focus_x, safe)
-                got = probe_video_duration(out) if ok else 0.0
-                if ok and got >= want - 1.5:
-                    break
-                log.warning("%s: phone version came out %.1f s instead of %.1f s%s", clip.name, got, want,
-                            ", rendering again in safe mode" if not safe else "")
-            else:
-                out.unlink(missing_ok=True)
-                log.error("couldn't make a proper phone version of %s (%s). The original clip is fine.",
-                          clip.name, err[-300:] or "video too short")
-                return None
+        if not await _render_once(clip, out, plan, words, length, layout, cfg):
+            return None
+
+        # 5: the review editor looks at the finished video and may ask for one fix
+        if not edited and use_ai and plan.source == "claude":
+            progress.step(clip.name, "Review editor is checking the result")
+            review = await _safe(review_editor(out, length, plan.hook, layout, plan.beats, cfg.ai_model))
+            if review is not None:
+                meta["review"] = review
+                changed = []
+                if review["new_hook"] and not hook_is_weak(review["new_hook"], []) and review["new_hook"] != plan.hook:
+                    plan.hook = review["new_hook"]
+                    changed.append("headline")
+                if review["layout"] in ("blur", "crop") and review["layout"] != layout:
+                    layout = review["layout"]
+                    changed.append("layout")
+                if review["drop_beats"] and plan.beats:
+                    plan.beats = []
+                    changed.append("reaction captions")
+                if changed:
+                    log.info("🔁 review editor: fixing the %s (%s)", " and ".join(changed), "; ".join(review["issues"])[:160])
+                    progress.step(clip.name, "Applying the review editor's fixes")
+                    if not await _render_once(clip, out, plan, words, length, layout, cfg):
+                        return None
+                else:
+                    log.info("✅ review editor: looks good")
 
         meta["vertical"] = out.name
         meta["captions"] = {**asdict(plan), "transcript": " ".join(w.text for w in words),
                             "words": [[round(w.start, 2), round(w.end, 2), w.text] for w in words],
-                            "layout": cfg.layout}
+                            "layout": layout}
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
         log.info("rendered %s", out.name)
         return out

@@ -19,9 +19,9 @@ def render(tmp_path, monkeypatch, broken_passes):
     real = v._encode
     calls = []
 
-    async def flaky(clip, out, tmp, cfg, focus, safe):
+    async def flaky(clip, out, tmp, cfg, focus, safe, **kw):
         calls.append(safe)
-        ok, err = await real(clip, out, tmp, cfg, focus, safe)
+        ok, err = await real(clip, out, tmp, cfg, focus, safe, **kw)
         if safe in broken_passes:   # simulate the "1 second" bug for this pass
             subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(out), "-t", "1", "-c", "copy",
                             str(out) + ".cut.mp4"], check=True)

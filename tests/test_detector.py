@@ -62,3 +62,49 @@ def test_detects_relative_spike_on_huge_channel():
     feed(det, rng, 0, 300, 80, users=200000)
     feed(det, rng, 300, 306, 400, users=200000)
     assert any(det.check(T0 + s) for s in range(301, 307))
+
+
+def _poisson_chat(det, rng, start, end, rate):
+    import math
+    for sec in range(start, end):
+        # Poisson-distributed message counts, like real chat
+        lam, k, p, limit = rate, 0, 1.0, math.exp(-rate)
+        while p > limit:
+            k += 1
+            p *= rng.random()
+        for _ in range(k - 1):
+            det.add(f"u{rng.randint(0, 10**6)}", T0 + sec + rng.random())
+
+
+def _fires(det, start, end):
+    return [s for s in (det.check(T0 + t) for t in range(start, end)) if s]
+
+
+def test_big_chat_clips_on_a_smaller_jump():
+    """6 msg/s normal: 2.5x (15 msg/s) never reached 3x before, but it's a real moment."""
+    rng = random.Random(10)
+    det = SpikeDetector(DetectorConfig())
+    _poisson_chat(det, rng, 0, 300, 6)
+    assert not _fires(det, 61, 300)
+    _poisson_chat(det, rng, 300, 310, 15)
+    assert _fires(det, 300, 311)
+
+
+def test_small_chat_needs_more_than_tripling():
+    """1.5 msg/s normal: tripling to 4.5 msg/s is just a few people talking, not a moment."""
+    rng = random.Random(11)
+    det = SpikeDetector(DetectorConfig())
+    _poisson_chat(det, rng, 0, 300, 1.5)
+    _poisson_chat(det, rng, 300, 310, 4.5)
+    assert not _fires(det, 61, 311)
+    _poisson_chat(det, rng, 311, 500, 1.5)
+    _poisson_chat(det, rng, 500, 510, 9)            # a real burst still clips
+    assert _fires(det, 500, 511)
+
+
+def test_no_false_alarms_on_steady_chats_of_any_size():
+    for rate, seed in ((1.5, 1), (6, 2), (15, 3), (40, 4)):
+        rng = random.Random(seed)
+        det = SpikeDetector(DetectorConfig())
+        _poisson_chat(det, rng, 0, 1200, rate)
+        assert not _fires(det, 61, 1200), rate

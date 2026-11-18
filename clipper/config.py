@@ -30,13 +30,16 @@ class ClipConfig:
     chat_delay: int = 0       # extra seconds to shift the clip earlier
     segment_seconds: int = 2
     quality: str = "best"
+    capture_before: int = 15      # extra seconds recorded before (and after) so the AI trim editor
+    capture_after: int = 10       # can choose where the moment really starts and ends
     keep_originals: bool = False  # keep the 16:9 originals (in <Streamer>/Originals) after the phone version
 
 
 @dataclass
 class VerticalConfig:
     enabled: bool = True           # also render a 9:16 captioned version of each clip
-    layout: str = "blur"           # "blur" (full frame over blurred fill) or "crop"
+    layout: str = "auto"           # "auto": webcam on top when there is one, else "blur"; or "facecam", "blur", "crop"
+    ai_editors: bool = True        # the 5 AI editors (trim, webcam, captions, post text, review); needs ai_captions
     speech_captions: bool = True   # word-by-word captions from Whisper
     whisper_model: str = "small"   # tiny / base / small / medium / large-v3
     ai_captions: bool = True       # let Claude write the hook and reaction captions

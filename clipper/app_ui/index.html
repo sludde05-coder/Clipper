@@ -276,7 +276,7 @@
               <label class="field"><span>Colour</span><div class="swatches" id="ed-moods"></div>
                 <div class="help">Used for the highlighted words and reaction captions.</div></label>
               <label class="field"><span>Layout</span>
-                <div class="seg" id="ed-layout"><button data-l="blur">Blurred background</button><button data-l="crop">Fill the screen</button></div></label>
+                <div class="seg" id="ed-layout"><button data-l="facecam" id="ed-facecam-btn">Webcam on top</button><button data-l="blur">Blurred background</button><button data-l="crop">Fill the screen</button></div></label>
               <div class="field"><span style="display:block;font-weight:600;margin-bottom:6px">Reaction captions</span>
                 <div id="ed-beats"></div>
                 <button class="btn" id="ed-addbeat">+ Add at the video's current time</button>
@@ -453,7 +453,7 @@
     btn.classList.toggle("primary", !on); btn.disabled = state.stopping;
     $$("#modes input").forEach(i => i.disabled = on);
     $("#restartnote").hidden = !state.needs_restart;
-    $("#rule").textContent = `A clip is made when chat reaches x${state.multiplier} its normal speed and at least ${state.min_rate} messages a second.`;
+    $("#rule").textContent = `A clip is made when chat jumps far enough above its normal speed. Busy chats need a smaller jump than quiet ones: each streamer's target is shown in the bar.`;
     renderRows(state.rows, on);
   }
   function renderRows(rows, on) {
@@ -465,7 +465,7 @@
         <td>${r.video ? '<span class="dot on"></span>recording' : '<span class="dot"></span><span class="help">waiting</span>'}</td>
         <td class="num">${r.viewers ? r.viewers.toLocaleString() : "–"}</td>
         <td class="num">${r.chat}</td><td class="num">${r.normal}</td>
-        <td>${r.peak ? "x" + r.peak : "–"}<span class="meter"><i style="width:${Math.min(100, (r.peak / need) * 100)}%"></i></span></td>
+        <td>${r.peak ? "x" + r.peak : "–"} <span class="help">/ x${r.need || need}</span><span class="meter"><i style="width:${Math.min(100, (r.peak / (r.need || need)) * 100)}%"></i></span></td>
         <td class="num">${r.clips}</td></tr>`).join("")}</table>`;
   }
   $("#startstop").onclick = async () => {
@@ -646,6 +646,11 @@
     $("#libraryview").hidden = true; $("#editorview").hidden = false; $("#main").scrollTop = 0;
     $("#ed-title").textContent = d.hook || d.name;
     $("#ed-sub").textContent = `${d.streamer} · ${d.date} ${d.time} · clip #${d.number}${d.title ? " · " + d.title : ""}`;
+    const notes = [];
+    if (d.trim && d.trim.by === "ai") notes.push(`✂️ Trim editor: ${d.trim.why || "cut to the moment"}`);
+    if (d.review) notes.push(d.review.ok ? "✅ Review editor: looked good" : `🔁 Review editor fixed: ${(d.review.issues || []).join("; ")}`);
+    $("#ed-sub").textContent += notes.length ? "  ·  " + notes.join("  ·  ") : "";
+    $("#ed-facecam-btn").hidden = !d.has_facecam;
     $("#ed-video").src = d.video;
     $("#ed-hook").value = d.hook; hookCount();
     $("#ed-moods").innerHTML = d.moods.map(m => `<button class="swatch ${m === d.mood ? "on" : ""}" data-m="${m}"><i style="background:${MOODCOLORS[m]}"></i>${m}</button>`).join("");

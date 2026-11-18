@@ -59,14 +59,21 @@ SETTINGS = [
     ("discovery", "languages", "Language", "language", "", None),
     ("discovery", "always_track", "Always clip these streamers", "lines",
      "One per line, e.g. twitch:kaicenat, kick:adinross or a YouTube live link", None),
-    ("clips", "pre_roll", "Seconds before chat explodes", "number", "", None),
+    ("clips", "pre_roll", "Seconds before chat explodes", "number", "Used when the AI trim editor isn't available", None),
     ("clips", "post_roll", "Seconds after", "number", "", None),
     ("clips", "quality", "Video quality", "select", "Lower it if your internet can't keep up", ["best", "1080p60", "720p60", "720p", "480p"]),
     ("clips", "keep_originals", "Keep 16:9 originals", "bool", "Otherwise they're deleted once a clip is posted", None),
-    ("detector", "multiplier", "How big a chat explosion must be", "number", "x normal chat speed (higher = fewer clips)", None),
+    ("detector", "multiplier", "How big a chat explosion must be", "number",
+     "x normal speed for a chat that normally runs at 3 msg/s; busier chats need less, quieter ones more (higher = fewer clips)", None),
+    ("detector", "min_jump", "Minimum rise in chat speed", "number",
+     "Messages per second above normal (stops small chats from clipping on a handful of messages)", None),
     ("detector", "min_rate", "Minimum chat speed", "number", "Messages per second (stops tiny chats from clipping)", None),
     ("detector", "cooldown", "Seconds between clips of one streamer", "number", "", None),
-    ("vertical", "layout", "Phone clip layout", "select", "blur: whole picture over a blurred background. crop: fills the screen", ["blur", "crop"]),
+    ("vertical", "layout", "Phone clip layout", "select",
+     "auto: streamer's webcam on top, gameplay below (blurred background if there's no webcam). blur: whole picture over "
+     "a blurred background. crop: fills the screen", ["auto", "blur", "crop"]),
+    ("vertical", "ai_editors", "AI editing team", "bool",
+     "5 AI editors: trim to the moment, find the webcam, captions, post texts, and a final review (needs AI captions)", None),
     ("vertical", "ai_captions", "AI captions", "bool", "Claude writes the headline and reaction captions", None),
     ("vertical", "ai_model", "AI model", "select", "Haiku costs about 0.1 cent per clip, Opus about 3-5 cents",
      ["claude-haiku-5-5", "claude-opus-5-5"]),
@@ -357,7 +364,8 @@ class ClipperApp:
             **self._summary(clip),
             "title": meta.get("title", ""), "url": meta.get("url", ""), "streamer_name": meta.get("name", ""),
             "hook": cap.get("hook", ""), "mood": cap.get("mood", "hype"), "moods": MOODS,
-            "layout": cap.get("layout", self.cfg.vertical.layout),
+            "layout": cap.get("layout", self.cfg.vertical.layout), "has_facecam": bool(cap.get("facecam")),
+            "trim": meta.get("trim"), "review": meta.get("review"),
             "beats": cap.get("beats", []),
             "words_text": " ".join(w[2] for w in words) if words else cap.get("transcript", ""),
             "has_word_timings": bool(words), "speech_on": bool(words or cap.get("transcript")),
@@ -412,8 +420,8 @@ class ClipperApp:
             mood = body.get("mood") if body.get("mood") in MOODS else cap.get("mood", "hype")
             plan = Plan(hook=str(body.get("hook", "")).strip(), mood=mood, beats=beats,
                         emphasis=cap.get("emphasis", []), crop_focus_x=float(cap.get("crop_focus_x", 0.5)),
-                        post_caption=cap.get("post_caption", ""), source="edited")
-            layout = body.get("layout") if body.get("layout") in ("blur", "crop") else self.cfg.vertical.layout
+                        post_caption=cap.get("post_caption", ""), source="edited", facecam=cap.get("facecam"))
+            layout = body.get("layout") if body.get("layout") in ("blur", "crop", "facecam") else self.cfg.vertical.layout
             vcfg = replace(self.cfg.vertical, layout=layout)
             work = clip.parent.parent / naming.WORK
             work.mkdir(parents=True, exist_ok=True)

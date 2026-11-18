@@ -102,6 +102,7 @@ class Plan:
     crop_focus_x: float = 0.5
     post_caption: str = ""
     source: str = "rules"
+    facecam: list | None = None   # [x, y, w, h] as fractions of the frame, if the stream has a webcam
 
 
 # ---------------- rule-based fallback ----------------
@@ -304,7 +305,7 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
     )
 
 
-async def _ask(model: str, messages: list[dict]) -> dict | None:
+async def _ask(model: str, messages: list[dict], schema: dict | None = None) -> dict | None:
     import anthropic
 
     try:
@@ -316,7 +317,7 @@ async def _ask(model: str, messages: list[dict]) -> dict | None:
         resp = await client.beta.messages.create(
             model=model,
             max_tokens=16000,
-            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
+            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema or SCHEMA}},
             messages=messages,
             **fallback,
         )

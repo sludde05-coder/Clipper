@@ -39,7 +39,7 @@ class ChannelSession:
         self.recorder = Recorder(
             stream.key, stream.url, Path(c.buffer_dir) / _safe(stream.key),
             segment_seconds=c.segment_seconds,
-            keep_seconds=c.pre_roll + c.chat_delay + c.post_roll + 60,
+            keep_seconds=c.pre_roll + c.capture_before + c.chat_delay + c.post_roll + c.capture_after + 60,
             quality=c.quality, source_cmd=source_cmd)
         self._chat = chat
         self.recent: deque[ChatMessage] = deque(maxlen=2000)
@@ -101,9 +101,10 @@ class ChannelSession:
 
     async def _clip(self, spike: Spike) -> None:
         c = self.cfg.clips
-        start = spike.onset - c.pre_roll - c.chat_delay
-        # Both ends are measured from the explosion, so every clip is exactly pre_roll + post_roll long.
-        end = spike.onset + c.post_roll - c.chat_delay
+        # Record a little more than the clip needs (capture_before/after), so the trim editor can choose where
+        # the moment really starts and ends. Without it, the clip is cut to pre_roll + post_roll (30 s) as before.
+        start = spike.onset - c.pre_roll - c.capture_before - c.chat_delay
+        end = spike.onset + c.post_roll + c.capture_after - c.chat_delay
         # Wait until the post-roll has been recorded and its segment closed.
         await asyncio.sleep(max(0.0, end - time.time()) + c.segment_seconds * 2 + 1)
         streamer = self.stream.display_name or self.stream.channel.split("#")[0]
@@ -161,7 +162,8 @@ async def _finish_clip(out: Path, details: Path, cfg: Config) -> Path | None:
     rendering = out.with_name(out.stem + ".phone.mp4")
     phone = await render_vertical(out, cfg.vertical, out=rendering,
                                   languages=cfg.discovery.languages, recent_dir=Path(c.output_dir),
-                                  meta_path=details, aside_dir=folder / naming.OTHER_LANGUAGES)
+                                  meta_path=details, aside_dir=folder / naming.OTHER_LANGUAGES,
+                                  trim_window=(c.pre_roll + c.chat_delay, c.post_roll - c.chat_delay))
     if phone is not None:
         final = naming.phone_path(out)
         final.parent.mkdir(parents=True, exist_ok=True)
