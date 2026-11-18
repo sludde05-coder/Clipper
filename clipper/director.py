@@ -41,22 +41,48 @@ MOOD_WORDS = {
 }
 
 # Fallback headlines (no AI): several per mood, picked at random so clips don't all read the same.
+# Fallback text when the AI isn't available: several per mood, in a clipper's voice, picked at random.
 HOOKS = {
-    "funny": ["{name} could not stop laughing", "I can't believe this happened", "{name} was NOT ready for this",
-              "This is why we watch {name}", "Nobody saw that coming", "{name} lost it"],
-    "hype": ["{name} actually pulled it off", "This might be the play of the day", "{name} just went crazy",
-             "Clean. Absolutely clean.", "Tell me this isn't insane", "{name} said watch this"],
-    "shock": ["Wait… what just happened?", "{name} did NOT see that coming", "Nobody was ready for this",
-              "This changed everything", "{name} froze for a second", "Rewind that again"],
-    "rage": ["{name} is so done", "This is going to hurt", "{name} had enough", "And it all fell apart"],
-    "sad": ["This one hurt", "So close…", "{name} will remember this one", "Pain."],
-    "wholesome": ["This made my day", "{name} is the best", "Okay this was really sweet", "Faith in humanity restored"],
+    "funny": ["{name} was NOT ready for this", "i can't with {name}", "the way {name} reacted", "{name} please",
+              "this is why we watch {name}", "nobody warn {name}"],
+    "hype": ["{name} really pulled that off", "that was way too clean", "{name} said watch this", "no way that worked",
+             "{name} did NOT miss", "first try too"],
+    "shock": ["wait what just happened", "{name} did NOT see that coming", "nobody was ready for this",
+              "watch {name}'s face", "rewind that", "how did that happen"],
+    "rage": ["{name} is so done", "this is the worst timing ever", "{name} had ONE job", "it all fell apart"],
+    "sad": ["this one hurt", "so close", "{name} will never recover from this", "pain."],
+    "wholesome": ["this made my day", "{name} is too nice for this game", "okay this was sweet", "protect {name} at all costs"],
 }
-
+POST_LINES = {
+    "funny": ["{name} was not ready for this one in gta 6 😭", "i can't stop watching {name} here in gta 6 😭 who did it better?",
+              "{name} really thought that would work in gta 6 💀"],
+    "hype": ["{name} made that look easy in gta 6 🔥 could you pull this off?", "that was way too clean from {name} in gta 6 🔥",
+             "{name} said watch this and then actually did it in gta 6 😳"],
+    "shock": ["{name} did NOT see that coming in gta 6 😳 what would you have done?", "wait for {name}'s reaction in gta 6 😳",
+              "how did this even happen to {name} in gta 6 💀"],
+    "rage": ["{name} is so done with gta 6 right now 😭", "worst timing ever for {name} in gta 6 💀 whose fault was this?"],
+    "sad": ["{name} was so close in gta 6 😭", "this one hurt to watch in gta 6 💔 did {name} deserve better?"],
+    "wholesome": ["{name} is too wholesome for gta 6 🥹", "this was actually sweet from {name} in gta 6 🥹"],
+}
 
 def pick_hook(mood: str, name: str) -> str:
     import random
-    return random.choice(HOOKS.get(mood, HOOKS["hype"])).format(name=name or "They")
+    return random.choice(HOOKS.get(mood, HOOKS["hype"])).format(name=name or "bro")
+
+
+def best_quote(words: list) -> str:
+    """A short, punchy line the streamer said (ends in ! or ?, or is short), for a quote hook."""
+    lines, cur = [], []
+    for w in words:
+        cur.append(w.text)
+        if w.text.endswith((".", "!", "?")):
+            lines.append(" ".join(cur))
+            cur = []
+    if cur:
+        lines.append(" ".join(cur))
+    good = [ln.strip(' "') for ln in lines if 2 <= len(ln.split()) <= 7]
+    good.sort(key=lambda ln: (not ln.endswith(("!", "?")), len(ln)))
+    return good[0] if good else ""
 
 EMOJI = {"funny": "😂", "hype": "🔥", "shock": "😱", "rage": "😡", "sad": "💔", "wholesome": "🥹"}
 
@@ -110,11 +136,14 @@ def rule_plan(meta: dict, words: list[Word]) -> Plan:
     mood, _ = chat_mood(texts)
     name = meta.get("name") or meta.get("channel", "Streamer")
     offset = float(meta.get("explosion_offset", 30))
-    # A short "wait for it" right before the moment, instead of quoting chat.
-    beats = [Beat(max(0.5, offset - 4), "WAIT FOR IT")] if offset > 6 else []
-    return Plan(hook=pick_hook(mood, name), mood=mood, beats=beats,
-                post_caption=f"{name} {EMOJI[mood]} #gta6 #{meta.get('platform', '')} #clips",
-                source="rules")
+    import random
+    beats = [Beat(max(0.5, offset - 4), random.choice(["wait for it", "watch this", "here it comes"]).upper())] \
+        if offset > 6 else []
+    quote = best_quote(words)
+    hook = f'"{quote}"' if quote and random.random() < 0.7 else pick_hook(mood, name)
+    line = random.choice(POST_LINES.get(mood, POST_LINES["hype"])).format(name=name)
+    tags = " ".join(dict.fromkeys(["#gta6", f"#{re.sub(r'[^a-z0-9]', '', name.lower())}", "#gaming", "#fyp"]))
+    return Plan(hook=hook, mood=mood, beats=beats, post_caption=f"{line} {tags}", source="rules")
 
 
 # ---------------- Claude ----------------
@@ -122,9 +151,11 @@ def rule_plan(meta: dict, words: list[Word]) -> Plan:
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["hook", "mood", "beats", "emphasis", "crop_focus_x", "post_caption"],
+    "required": ["hook_options", "hook", "mood", "beats", "emphasis", "crop_focus_x", "post_caption"],
     "properties": {
-        "hook": {"type": "string", "description": "Text above the video about what the streamer did or said. Max 8 words."},
+        "hook_options": {"type": "array", "items": {"type": "string"},
+                         "description": "3 different hooks: a quote, a reaction, a setup."},
+        "hook": {"type": "string", "description": "The best of the options. Max 8 words."},
         "mood": {"type": "string", "enum": MOODS},
         "beats": {
             "type": "array",
@@ -139,8 +170,8 @@ SCHEMA = {
     },
 }
 
-PROMPT = """You are a skilled clip editor turning a livestream moment into a vertical short (TikTok/Shorts/Reels).
-The clip was cut automatically because the stream's chat suddenly exploded, so something big happened
+PROMPT = """You write the text for viral livestream clips (TikTok, YouTube Shorts, Reels), the way the biggest clip
+accounts do. The clip was cut automatically because the stream's chat suddenly exploded, so something big happened
 just before t={offset:.0f}s. Chat is only how the moment was found: it is NOT the story.
 
 Streamer: {name} ({platform})
@@ -150,39 +181,63 @@ Clip length: {length:.0f}s
 What the streamer says (speech-to-text, t = seconds from clip start):
 {transcript}
 
-Chat around the explosion (use it only to understand the mood):
+What chat spammed most around the explosion (only to understand the mood): {top_chat}
+Chat around the explosion:
 {chat}
 
 The images are frames from the clip, labelled with their timestamps. Most are from just before the explosion.
 
-First work out what actually happened: what the streamer did, said, saw or reacted to. Then write:
+First work out what actually happened: what the streamer did, said, saw or reacted to, and what makes it
+funny / shocking / impressive. Then write like a real clipper, not like an AI or a news headline.
 
-- hook: the text shown above the video for the whole clip. It must make someone stop scrolling.
-  * It's about the streamer and the moment, never about chat. Do not use the word "chat".
-  * Write like a sharp human clipper, casual and specific, not like a news headline or a template.
-  * Pick whichever style fits THIS moment best, and vary it from clip to clip:
-    a funny or dramatic line the streamer actually said (quoted), a reaction ("he did NOT see that coming"),
-    a setup ("POV: you trust the NPC"), a bold claim, or a short question.
-  * Be concrete about what happened. Use the streamer's name only when it adds something.
-  * Max 8 words. No hashtags, no emoji.
+HOW VIRAL CLIP TEXT SOUNDS
+- Like a viewer texting a friend about what they just watched. Casual, specific, a bit unhinged. lowercase is fine.
+- The best hook is often the streamer's own funniest or most dramatic line, word for word, in quotes:
+  "bro i'm actually done", "WHY IS HE IN MY HOUSE". Use a quote whenever the transcript has a good one.
+- Otherwise react to the moment: he was NOT ready for that / she really thought that would work /
+  the way he just gave up / nobody tell him what's behind him / this is the worst timing ever
+- Or set it up and leave a gap, without spoiling the punchline: POV: you trust the npc / watch his face at the end /
+  he had ONE job
+- CAPS on the one word that carries the emotion (NOT, ONE, WHY), never the whole hook.
+- Be specific to THIS clip: the thing, the person, the place. Never generic.
+- Never use: "chat", "play of the day", "went crazy", "insane moment", "epic", "absolutely", "you won't believe",
+  "wild moment", "chaos", "goes silent", "pulls up", "unbelievable", "legendary", "crazy moment".
+  Don't describe the clip like a narrator ("He pulls up the map and...").
+
+Examples of the voice (made up; never reuse them):
+  hook: "i'm not even mad that was clean"     post: "kai really thought the cops wouldn't notice 😭 gta 6 day one and he's already wanted"
+  hook: he was NOT ready for that jump         post: "the way he committed to this 💀 would you have tried it?"
+  hook: nobody tell him what's behind him      post: "lacy spent 10 minutes on this plan and it lasted 4 seconds 😭"
+
+Now write:
+- hook_options: 3 different hooks, each a different style (a quote, a reaction, a setup). Max 8 words each.
+  No hashtags, no emoji (the video can't show them).
+- hook: the strongest of the three, the one that makes someone stop scrolling in the first second.
 {recent}
 - mood: the overall feel of the moment.
-- beats: 0-2 short on-screen captions (max 5 words each, no emoji), timed to the key moments you can
-  see or hear, e.g. right before the big moment ("wait for it") or the payoff. Not about chat, and don't
-  repeat the hook. Leave beats empty if the speech captions already tell the story.
-- emphasis: words from the transcript worth highlighting (the punchline, names, key words).
+- beats: 0-2 short on-screen texts (max 4 words, no emoji) timed to key moments, e.g. "wait for it" right before
+  the payoff, or a one-word reaction ("BRO.") right after. Not about chat, don't repeat the hook. Empty is fine.
+- emphasis: up to 6 words from the transcript worth highlighting (the punchline, names, key words).
 - crop_focus_x: if the video is cropped to a vertical strip, where should its center be so the action stays in frame?
-- post_caption: one natural line to post with the clip, in the same voice as the hook but not a copy of it,
-  followed by 3-5 relevant hashtags."""
+- post_caption: what's posted with the clip. 1-2 casual sentences (about 80-200 characters) that add context or
+  a joke beyond the hook, mention the streamer's name and "gta 6" naturally (people search for those), and often
+  end with a question that gets comments ("would you have stopped?", "who's fault was this?"). 1-2 emoji max
+  (😭 💀 🔥 😳 are the usual ones). Then 3-5 hashtags on the same line, lowercase."""
 
-RETRY = ("Your hook \"{hook}\" is about chat or reuses a recent pattern. Write a new set where the hook is about "
+RETRY = ("Your hook \"{hook}\" sounds generic, uses a banned phrase or mentions chat, or reuses a recent opening. "
+         "Write a new set in the voice of a real clipper: specific to this clip, a quote or a reaction. The hook is about "
          "what the streamer did or said in this moment, without the word \"chat\".")
 
 
+BANNED = ("play of the day", "went crazy", "goes crazy", "insane moment", "epic", "absolutely", "you won't believe",
+          "wild moment", "chaos", "goes silent", "pulls up", "unbelievable", "legendary", "crazy moment",
+          "must watch", "watch till the end", "incredible")
+
+
 def hook_is_weak(hook: str, recent: list[str]) -> bool:
-    """A hook about chat, or one that opens like a recent one, gets one retry."""
+    """A hook about chat, with stock phrasing, or opening like a recent one gets one retry."""
     h = hook.lower().strip()
-    if not h or re.search(r"\bchat\b", h):
+    if not h or re.search(r"\bchat\b", h) or any(b in h for b in BANNED):
         return True
     opening = " ".join(h.split()[:2])
     return any(" ".join(r.lower().split()[:2]) == opening for r in recent[-5:]) and len(h.split()) > 2
@@ -226,7 +281,7 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
     content.append({"type": "text", "text": PROMPT.format(
         name=meta.get("name") or meta.get("channel"), platform=meta.get("platform"),
         title=meta.get("title") or "(unknown)", length=length, offset=offset,
-        transcript=transcript, chat=chat, recent=recent_text)})
+        transcript=transcript, chat=chat, recent=recent_text, top_chat=top_chat(meta, offset))})
     messages = [{"role": "user", "content": content}]
 
     d = await _ask(model, messages)
@@ -289,6 +344,15 @@ async def _ask(model: str, messages: list[dict]) -> dict | None:
     except json.JSONDecodeError:
         log.warning("Claude returned unparseable JSON: using rule-based captions")
         return None
+
+
+def top_chat(meta: dict, offset: float, n: int = 5) -> str:
+    """The most repeated chat messages around the explosion, e.g. 'KEKW ×40, W ×22'."""
+    timeline = meta.get("chat_timeline") or []
+    texts = [m for tt, _u, m in timeline if offset - 5 <= float(tt) <= offset + 12] or \
+            [s.split(": ", 1)[-1] for s in meta.get("chat_sample", [])]
+    counts = Counter(re.sub(r"\s+", " ", m.strip().upper())[:30] for m in texts if m.strip())
+    return ", ".join(f"{m} ×{c}" for m, c in counts.most_common(n)) or "(none)"
 
 
 def _lines(words: list[Word]) -> list[str]:

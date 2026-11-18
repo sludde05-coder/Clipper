@@ -55,7 +55,7 @@ def test_recent_hooks_are_in_the_prompt(monkeypatch):
     run(monkeypatch, [answer("Kai found a secret car")], recent=["POV: you trust the NPC", "He did NOT see that"])
     prompt = FakeAnthropic.requests[0]["messages"][0]["content"][-1]["text"]
     assert "POV: you trust the NPC" in prompt and "Don't reuse" in prompt
-    assert "never about chat" in prompt
+    assert "it is NOT the story" in prompt and "hook_options" in prompt
 
 
 def test_hook_is_weak():

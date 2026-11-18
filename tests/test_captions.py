@@ -21,7 +21,8 @@ def test_rule_plan_uses_chat_mood_but_not_chat_words():
     assert all("chat" not in h.lower() for h in hooks)
     p = rule_plan(meta, [])
     assert p.mood == "funny"
-    assert p.beats and p.beats[0].text == "WAIT FOR IT" and p.beats[0].t < 30
+    assert p.beats and p.beats[0].text in ("WAIT FOR IT", "WATCH THIS", "HERE IT COMES") and p.beats[0].t < 30
+    assert "gta 6" in p.post_caption and "#gta6" in p.post_caption       # searchable, natural
 
 
 def test_grouping_breaks_on_pause_and_punctuation():
@@ -41,3 +42,18 @@ def test_ass_has_all_layers_and_strips_emoji():
 
 def test_clean():
     assert clean("a{b}\\c 🔥\n d") == "abc d"
+
+
+def test_fallback_quotes_the_streamer_when_it_can():
+    from clipper.director import best_quote
+    from clipper.transcribe import Word
+    words = [Word(i, i + 0.3, w) for i, w in enumerate("okay let me try this. why is he in my house?! no way".split())]
+    assert best_quote(words) == "why is he in my house?!"
+    assert best_quote([]) == ""
+
+
+def test_stock_phrases_get_rewritten():
+    from clipper.director import hook_is_weak
+    assert hook_is_weak("This might be the play of the day", [])
+    assert hook_is_weak("He pulls up the GTA 6 map and goes silent", [])
+    assert not hook_is_weak("he was NOT ready for that jump", [])
