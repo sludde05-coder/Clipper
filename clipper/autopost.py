@@ -55,6 +55,7 @@ class AutoPoster:
         self._ctx = None
         self._pages: dict[str, object] = {}
         self._lock = asyncio.Lock()
+        self._signin_proc: subprocess.Popen | None = None
 
     # ------------------------------------------------------------ browser
 
@@ -71,6 +72,13 @@ class AutoPoster:
             raise FillError("the auto-fill part isn't installed: run install.bat again") from e
         if self._pw is None:
             self._pw = await async_playwright().start()
+        # Another Chrome with this profile open (e.g. the sign-in window) makes a new one hand over to it
+        # and quit straight away: you'd see a blank page and auto-fill would fail. Close ours first.
+        if profile_in_use(self.profile_dir):
+            await self._close_sign_in_window()
+        if profile_in_use(self.profile_dir):
+            raise FillError("Chrome is still open with the Clipper profile (the sign-in window?). "
+                            "Close every Chrome window titled Clipper, then press Fill in again")
         self._name_profile()
         headless = os.environ.get("CLIPPER_BROWSER_HEADLESS") == "1"  # tests only; normally you see the window
         opts = dict(user_data_dir=str(self.profile_dir), headless=headless, locale="en-US",
@@ -79,8 +87,13 @@ class AutoPoster:
                     # what the "--no-sandbox" warning was about). Tests running as root can't use it.
                     chromium_sandbox=os.environ.get("CLIPPER_BROWSER_NO_SANDBOX") != "1")
         override = os.environ.get("CLIPPER_BROWSER_PATH")
-        # Google Chrome first, always. Edge only if Chrome isn't installed.
-        attempts = ([{"executable_path": override}] if override else []) + [{"channel": "chrome"}, {"channel": "msedge"}]
+        # Google Chrome, always. Edge only if Chrome isn't installed at all.
+        if override:
+            attempts = [{"executable_path": override}]
+        elif find_chrome() is not None:
+            attempts = [{"channel": "chrome"}]
+        else:
+            attempts = [{"channel": "chrome"}, {"channel": "msedge"}]
         last = None
         for extra in attempts:
             try:
@@ -91,19 +104,51 @@ class AutoPoster:
                 return self._ctx
             except Exception as e:  # noqa: BLE001
                 last = e
-        if last is not None and any(k in str(last) for k in ("ProcessSingleton", "in use", "already running",
-                                                             "user data directory is already")):
-            raise FillError("the Chrome window you signed in with is still open: close it, then press Fill in again")
-        raise FillError("couldn't open Google Chrome for Clipper. Is Chrome installed? "
-                        f"Get it from google.com/chrome ({last})")
+        if profile_in_use(self.profile_dir) or any(k in str(last) for k in ("ProcessSingleton", "in use", "already running")):
+            raise FillError("Chrome is still open with the Clipper profile (the sign-in window?). "
+                            "Close every Chrome window titled Clipper, then press Fill in again")
+        first_line = str(last).strip().splitlines()[0][:200] if last else "unknown error"
+        raise FillError(f"couldn't open Google Chrome for Clipper ({first_line})")
 
     def _name_profile(self) -> None:
-        """Name the profile "Clipper", so the window shows which profile it is."""
+        """Name the profile "Clipper", and stop Chrome from staying open in the background with it
+        after its windows are closed (that would keep the profile busy)."""
         import json
         prefs = self.profile_dir / "Default" / "Preferences"
         if not prefs.exists():
             prefs.parent.mkdir(parents=True, exist_ok=True)
             prefs.write_text(json.dumps({"profile": {"name": "Clipper"}}), encoding="utf-8")
+        state_file = self.profile_dir / "Local State"
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
+        except (OSError, ValueError):
+            return
+        if state.get("background_mode", {}).get("enabled") is not False:
+            state.setdefault("background_mode", {})["enabled"] = False
+            try:
+                state_file.write_text(json.dumps(state), encoding="utf-8")
+            except OSError:
+                pass
+
+    async def _close_sign_in_window(self) -> None:
+        """Close the sign-in Chrome window Clipper opened, the normal way (so logins are saved)."""
+        proc = self._signin_proc
+        if proc is None or proc.poll() is not None:
+            return
+        log.info("closing the sign-in Chrome window so Clipper can use the profile")
+        try:
+            if sys.platform == "win32":
+                from .proc import NO_WINDOW
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T"], capture_output=True, **NO_WINDOW)
+            else:
+                proc.terminate()
+        except OSError:
+            return
+        for _ in range(30):  # up to 15 s for Chrome to save and let go of the profile
+            if not profile_in_use(self.profile_dir):
+                break
+            await asyncio.sleep(0.5)
+        self._signin_proc = None
 
     def _closed(self) -> None:
         self._ctx = None
@@ -130,8 +175,8 @@ class AutoPoster:
         if chrome is None:
             raise FillError("Google Chrome isn't installed. Get it from google.com/chrome")
         self._name_profile()
-        subprocess.Popen([str(chrome), f"--user-data-dir={self.profile_dir}", "--no-first-run",
-                          "--no-default-browser-check", *[SIGN_IN_URL[p] for p in platforms]])
+        self._signin_proc = subprocess.Popen([str(chrome), f"--user-data-dir={self.profile_dir}", "--no-first-run",
+                                              "--no-default-browser-check", *[SIGN_IN_URL[p] for p in platforms]])
 
     async def close(self) -> None:
         try:
@@ -281,6 +326,33 @@ class AutoPoster:
             raise FillError("the video is in, but the caption box didn't show up: paste the caption yourself")
         await self._replace_text(page, box, captions["caption"])
         return "Check it, then click Share"
+
+
+def profile_in_use(profile_dir: Path) -> bool:
+    """Is a Chrome running with this profile right now?"""
+    if sys.platform == "win32":
+        lock = profile_dir / "lockfile"   # Chrome keeps this open (and undeletable) while it runs
+        if not lock.exists():
+            return False
+        try:
+            lock.unlink()                  # left over from a crash: harmless to remove
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+    lock = profile_dir / "SingletonLock"   # a link to "<computer>-<process id>"
+    try:
+        target = os.readlink(lock)
+    except OSError:
+        return False
+    try:
+        os.kill(int(target.rsplit("-", 1)[1]), 0)
+        return True
+    except (ValueError, IndexError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
 
 
 def find_chrome() -> Path | None:

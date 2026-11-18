@@ -153,5 +153,54 @@ def test_profile_in_use_gives_a_clear_message(tmp_path, monkeypatch):
 
     ap = autopost.AutoPoster(tmp_path / "chrome-profile")
     ap._pw = FakePW()
-    with pytest.raises(autopost.FillError, match="still open: close it"):
+    with pytest.raises(autopost.FillError, match="still open with the Clipper profile"):
         asyncio.run(ap._context())
+
+
+def _start_chrome(profile, url="about:blank"):
+    """A real Chrome holding the profile, like the sign-in window does."""
+    proc = subprocess.Popen([CHROME[-1], "--headless=new", "--no-sandbox", f"--user-data-dir={profile}",
+                             "--no-first-run", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    import time
+    for _ in range(40):
+        if autopost.profile_in_use(profile):
+            return proc
+        time.sleep(0.25)
+    proc.kill()
+    raise AssertionError("test Chrome didn't start")
+
+
+def test_closes_its_own_sign_in_window_then_fills_in(site):
+    video, tmp = site
+    profile = tmp / "profile"
+
+    async def fn(ap):
+        ap._signin_proc = _start_chrome(profile)
+        assert autopost.profile_in_use(profile)
+        await ap.fill("tiktok", video, {"caption": "hi"}, lambda s: None)
+        return await ap._pages["tiktok"].inner_text("#cap"), ap._signin_proc
+    caption, proc = run(tmp, fn)
+    assert caption == "hi" and proc is None
+
+
+def test_profile_open_elsewhere_gives_a_short_clear_message(site):
+    video, tmp = site
+    profile = tmp / "profile"
+    other = _start_chrome(profile)          # not opened by Clipper, so it won't close it
+    try:
+        async def fn(ap):
+            with pytest.raises(autopost.FillError) as e:
+                await ap.fill("tiktok", video, {"caption": "hi"}, lambda s: None)
+            return str(e.value)
+        msg = run(tmp, fn)
+        assert "still open with the Clipper profile" in msg and len(msg) < 200
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_background_mode_is_switched_off_for_the_profile(tmp_path):
+    import json
+    ap = autopost.AutoPoster(tmp_path / "p")
+    ap._name_profile()
+    assert json.loads((tmp_path / "p" / "Local State").read_text(encoding="utf-8"))["background_mode"]["enabled"] is False
