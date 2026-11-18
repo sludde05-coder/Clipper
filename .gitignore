@@ -6,4 +6,5 @@ __pycache__/
 .venv/
 POST/
 browser-profile/
+chrome-profile/
 clipper.log*

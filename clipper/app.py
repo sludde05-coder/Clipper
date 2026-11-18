@@ -603,7 +603,7 @@ class ClipperApp:
     def autoposter(self):
         if self._autoposter is None:
             from .autopost import AutoPoster
-            self._autoposter = AutoPoster(Path(self.config_path).resolve().parent / "browser-profile")
+            self._autoposter = AutoPoster(Path(self.config_path).resolve().parent / "chrome-profile")
         return self._autoposter
 
     async def autofill(self, request):

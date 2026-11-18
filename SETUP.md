@@ -60,7 +60,9 @@ To make re-rendering possible, each clip's caption-free original is kept out of 
 ### Posting
 
 1. In **Posting**, turn on the platforms you use and click **Open … to sign in** for each one. This opens
-   **Clipper's own browser window**, a separate Edge window with its own profile. Sign in there once; it remembers you.
+   **Clipper's own browser window**: Google Chrome with its own profile called "Clipper". Sign in there once; it
+   remembers you. (It has to be Clipper's own profile: since version 136, Chrome doesn't let programs control the
+   profiles you make in Chrome yourself.) You need Google Chrome installed; without it Clipper falls back to Edge.
 2. In **Clips**, tick the clips you want to post and press **Post selected**.
 3. For each clip and platform, Clipper **puts the video and caption into the upload page** in its browser window.
    On YouTube it also picks "not made for kids", goes through the Next steps and chooses Public.

@@ -28,6 +28,7 @@ def site(monkeypatch, tmp_path):
     monkeypatch.setattr(autopost, "UPLOAD_URL", {k: f"{base}/{k}.html" for k in ("tiktok", "youtube", "instagram")})
     monkeypatch.setenv("CLIPPER_BROWSER_PATH", CHROME[-1])
     monkeypatch.setenv("CLIPPER_BROWSER_HEADLESS", "1")
+    monkeypatch.setenv("CLIPPER_BROWSER_NO_SANDBOX", "1")   # the test machine runs as root
     video = tmp_path / "KaiCenat_2026-11-19_21-34-12_1.mp4"
     subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=180x320:rate=30",
                     "-t", "1", "-pix_fmt", "yuv420p", str(video)], check=True)

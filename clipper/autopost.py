@@ -1,8 +1,9 @@
 """Fills in the upload pages of TikTok, YouTube and Instagram in Clipper's own browser window,
 so you only have to check the post and click Post yourself.
 
-The window is Microsoft Edge (or Chrome) run by Playwright with a separate "Clipper" profile, so
-you sign in to each site there once and stay signed in. Nothing is hidden: the sites can see it's
+The window is Google Chrome, run by Playwright with its own profile called "Clipper", so you sign
+in to each site there once and stay signed in. (Chrome doesn't allow programs to control your
+normal Chrome profiles since version 136, so it can't be one you made in Chrome yourself.) Nothing is hidden: the sites can see it's
 an automated browser, and the final Post/Publish/Share click is always yours.
 
 Each step tries a few ways to find what it needs and gives up with a clear message instead of
@@ -69,23 +70,36 @@ class AutoPoster:
             raise FillError("the auto-fill part isn't installed: run install.bat again") from e
         if self._pw is None:
             self._pw = await async_playwright().start()
-        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        self._name_profile()
         headless = os.environ.get("CLIPPER_BROWSER_HEADLESS") == "1"  # tests only; normally you see the window
         opts = dict(user_data_dir=str(self.profile_dir), headless=headless, locale="en-US",
-                    viewport=None, args=["--start-maximized"])
+                    viewport=None, args=["--start-maximized"],
+                    # Keep Chrome's security sandbox on (Playwright turns it off by default, which is
+                    # what the "--no-sandbox" warning was about). Tests running as root can't use it.
+                    chromium_sandbox=os.environ.get("CLIPPER_BROWSER_NO_SANDBOX") != "1")
         override = os.environ.get("CLIPPER_BROWSER_PATH")
-        attempts = ([{"executable_path": override}] if override else []) + \
-                   ([{"channel": "msedge"}, {"channel": "chrome"}] if sys.platform == "win32" else
-                    [{"channel": "chrome"}, {"channel": "msedge"}]) + [{}]
+        # Google Chrome first, always. Edge only if Chrome isn't installed.
+        attempts = ([{"executable_path": override}] if override else []) + [{"channel": "chrome"}, {"channel": "msedge"}]
         last = None
         for extra in attempts:
             try:
                 self._ctx = await self._pw.chromium.launch_persistent_context(**opts, **extra)
                 self._ctx.on("close", lambda *_: self._closed())
+                if extra.get("channel") == "msedge":
+                    log.warning("Google Chrome isn't installed, so Clipper's browser window uses Microsoft Edge")
                 return self._ctx
             except Exception as e:  # noqa: BLE001
                 last = e
-        raise FillError(f"couldn't open Clipper's browser window ({last})")
+        raise FillError("couldn't open Google Chrome for Clipper. Is Chrome installed? "
+                        f"Get it from google.com/chrome ({last})")
+
+    def _name_profile(self) -> None:
+        """Name the profile "Clipper", so the window shows which profile it is."""
+        import json
+        prefs = self.profile_dir / "Default" / "Preferences"
+        if not prefs.exists():
+            prefs.parent.mkdir(parents=True, exist_ok=True)
+            prefs.write_text(json.dumps({"profile": {"name": "Clipper"}}), encoding="utf-8")
 
     def _closed(self) -> None:
         self._ctx = None
