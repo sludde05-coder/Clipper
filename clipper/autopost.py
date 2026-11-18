@@ -36,6 +36,11 @@ SIGN_IN_URL = {
 NEXT = re.compile(r"^\s*(Next|Nästa)\s*$", re.I)
 OK = re.compile(r"^\s*(OK|Okej)\s*$", re.I)
 POST_ITEM = re.compile(r"^\s*(Post|Inlägg)\s*$", re.I)
+EDIT_COVER = re.compile(r"^\s*(Edit cover|Redigera omslag|Ändra omslag)\s*$", re.I)
+UPLOAD_COVER = re.compile(r"^\s*(Upload cover|Ladda upp omslag)\s*$", re.I)
+CONFIRM_COVER = re.compile(r"^\s*(Confirm|Save|Done|Bekräfta|Spara|Klar)\s*$", re.I)
+IG_COVER = re.compile(r"^\s*(Select from computer|Välj från datorn|Välj från dator)\s*$", re.I)
+COVER_MISSED = "Cover: Clipper couldn't set it, so pick one yourself (the cover file is in clips/.covers)"
 
 Status = Callable[[str], Awaitable[None] | None]
 
@@ -86,7 +91,10 @@ class AutoPoster:
         self._name_profile()
         headless = os.environ.get("CLIPPER_BROWSER_HEADLESS") == "1"  # tests only; normally you see the window
         opts = dict(user_data_dir=str(self.profile_dir), headless=headless, locale="en-US",
-                    viewport=None, args=["--start-maximized"],
+                    viewport=None,
+                    # Software video decoding: with the graphics chip decoding, a site grabbing a frame
+                    # for the cover could get an empty buffer, which shows up as a plain green cover.
+                    args=["--start-maximized", "--disable-accelerated-video-decode"],
                     # Keep Chrome's security sandbox on (Playwright turns it off by default, which is
                     # what the "--no-sandbox" warning was about). Tests running as root can't use it.
                     chromium_sandbox=os.environ.get("CLIPPER_BROWSER_NO_SANDBOX") != "1")
@@ -241,32 +249,33 @@ class AutoPoster:
     # ------------------------------------------------------------ the platforms
 
     async def fill(self, platform: str, video: Path, captions: dict[str, str], status: Status,
-                   submit: bool = False) -> str:
+                   submit: bool = False, cover: Path | None = None) -> str:
         """Fill in one platform's upload page. Returns what's left for you to click, or, with
         submit=True, also clicks Post / Publish / Share and returns the site's confirmation."""
         async with self._lock:
-            left = await self._fill(platform, video, captions, status)
+            left = await self._fill(platform, video, captions, status, cover)
             if not submit:
                 return left
             page = self._pages[platform]
             return await {"tiktok": self._post_tiktok, "youtube": self._post_youtube,
                           "instagram": self._post_instagram}[platform](page, status)
 
-    async def _fill(self, platform: str, video: Path, captions: dict[str, str], status: Status) -> str:
+    async def _fill(self, platform: str, video: Path, captions: dict[str, str], status: Status,
+                    cover: Path | None = None) -> str:
         page = await self._page(platform)
         await _say(status, "Opening the upload page")
         await page.goto(UPLOAD_URL[platform], wait_until="domcontentloaded")
         if self._looks_signed_out(page.url):
             raise NeedsSignIn(platform)
         if platform == "tiktok":
-            return await self._tiktok(page, video, captions, status)
+            return await self._tiktok(page, video, captions, status, cover)
         if platform == "youtube":
-            return await self._youtube(page, video, captions, status)
+            return await self._youtube(page, video, captions, status, cover)
         if platform == "instagram":
-            return await self._instagram(page, video, captions, status)
+            return await self._instagram(page, video, captions, status, cover)
         raise FillError(f"unknown platform {platform}")
 
-    async def _tiktok(self, page, video, captions, status) -> str:
+    async def _tiktok(self, page, video, captions, status, cover=None) -> str:
         await self._upload(page, video, status, "tiktok")
         await _say(status, "Writing the caption")
         box = await self._first(page, ['div[contenteditable="true"].public-DraftEditor-content',
@@ -275,9 +284,80 @@ class AutoPoster:
         if box is None:
             raise FillError("the video is in, but the caption box didn't show up: paste the caption yourself")
         await self._replace_text(page, box, captions["caption"])
-        return "Check it, wait for the upload to finish, then click Post"
+        left = "Check it, wait for the upload to finish, then click Post"
+        if cover is not None and not await self._cover_tiktok(page, cover, status):
+            left = f"{left}. {COVER_MISSED}"
+        return left
 
-    async def _youtube(self, page, video, captions, status) -> str:
+    # ------------------------------------------------------------ covers
+
+    async def _cover_tiktok(self, page, cover: Path, status) -> bool:
+        """Edit cover -> Upload cover -> the picture -> Confirm. False if any step isn't there."""
+        await _say(status, "Setting the cover")
+        edit = await _wait_enabled(page, [page.get_by_role("button", name=EDIT_COVER), page.get_by_text(EDIT_COVER)], 60)
+        if edit is None:
+            log.info("TikTok: no Edit cover button, so the cover wasn't set")
+            return False
+        try:
+            await edit.click()
+            tab = await _wait_enabled(page, [page.get_by_role("tab", name=UPLOAD_COVER),
+                                             page.get_by_role("button", name=UPLOAD_COVER), page.get_by_text(UPLOAD_COVER)], 10)
+            if tab is not None:
+                await tab.click()
+            if not await self._give_picture(page, cover, ['[role="dialog"] input[type="file"][accept*="image"]',
+                                                          'input[type="file"][accept*="image"]']):
+                raise FillError("no place to upload the picture")
+            ok = await _wait_enabled(page, [page.locator('[role="dialog"]').get_by_role("button", name=CONFIRM_COVER),
+                                            page.get_by_role("button", name=CONFIRM_COVER)], 30)
+            if ok is None:
+                raise FillError("no Confirm button")
+            await ok.click()
+            return True
+        except Exception as e:  # noqa: BLE001
+            log.info("TikTok: couldn't set the cover (%s)", e)
+            try:
+                await page.keyboard.press("Escape")
+            except Exception:  # noqa: BLE001
+                pass
+            return False
+
+    async def _cover_instagram(self, page, cover: Path, status) -> bool:
+        """On the Edit step: Cover photo -> Select from computer -> the picture."""
+        await _say(status, "Setting the cover")
+        btn = await _wait_enabled(page, [page.get_by_role("button", name=IG_COVER), page.get_by_text(IG_COVER)], 8)
+        try:
+            if btn is not None:
+                async with page.expect_file_chooser(timeout=8000) as chooser:
+                    await btn.click()
+                await (await chooser.value).set_files(str(cover))
+                await asyncio.sleep(1.5)
+                return True
+            return await self._give_picture(page, cover, ['[role="dialog"] input[type="file"][accept*="image"]'])
+        except Exception as e:  # noqa: BLE001
+            log.info("Instagram: couldn't set the cover (%s)", e)
+            return False
+
+    async def _cover_youtube(self, page, cover: Path, status) -> bool:
+        """YouTube lets some channels pick a thumbnail for Shorts on a computer: use it if it's there."""
+        await _say(status, "Setting the thumbnail")
+        try:
+            return await self._give_picture(page, cover, ['input#file-loader[accept*="image"]',
+                                                          'ytcp-thumbnail-uploader input[type="file"]',
+                                                          'ytcp-thumbnails-compact-editor-uploader input[type="file"]'],
+                                            timeout=5)
+        except Exception as e:  # noqa: BLE001
+            log.info("YouTube: couldn't set the thumbnail (%s)", e)
+            return False
+
+    async def _give_picture(self, page, cover: Path, selectors: list[str], timeout: float = 15) -> bool:
+        box = await self._first(page, selectors, timeout=timeout, state="attached")
+        if box is None:
+            return False
+        await box.set_input_files(str(cover))
+        await asyncio.sleep(1.5)
+        return True
+
+    async def _youtube(self, page, video, captions, status, cover=None) -> str:
         if self._looks_signed_out(page.url) or "accounts.google" in page.url:
             raise NeedsSignIn("youtube")
         await self._upload(page, video, status, "youtube")
@@ -290,6 +370,8 @@ class AutoPoster:
         desc = await self._first(page, ["#description-textarea #textbox"], timeout=10)
         if desc is not None:
             await self._replace_text(page, desc, captions["description"])
+        if cover is not None:
+            await self._cover_youtube(page, cover, status)
         not_for_kids = await self._first(page, ['tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]',
                                                 'tp-yt-paper-radio-button[name="NOT_MADE_FOR_KIDS"]'], timeout=10)
         if not_for_kids is not None:
@@ -359,7 +441,7 @@ class AutoPoster:
             return "Shared on Instagram"
         raise NotConfirmed("Clicked Share, but Instagram didn't confirm it")
 
-    async def _instagram(self, page, video, captions, status) -> str:
+    async def _instagram(self, page, video, captions, status, cover=None) -> str:
         await _say(status, "Opening a new post")
         create = await self._first(page, ['svg[aria-label="New post"]', 'svg[aria-label="Create"]',
                                           'svg[aria-label="Nytt inlägg"]', 'svg[aria-label="Skapa"]'], timeout=25)
@@ -377,7 +459,10 @@ class AutoPoster:
             await ok.first.click(timeout=4000)  # "Video posts are now shared as reels"
         except Exception:  # noqa: BLE001
             pass
-        for _ in range(2):  # crop -> edit -> caption
+        cover_set = cover is None
+        for step in range(2):  # crop -> edit -> caption
+            if step == 1 and cover is not None:   # the Edit step is where the cover photo is chosen
+                cover_set = await self._cover_instagram(page, cover, status)
             nxt = page.get_by_role("button", name=NEXT)
             try:
                 await nxt.first.click(timeout=30000)
@@ -391,7 +476,7 @@ class AutoPoster:
         if box is None:
             raise FillError("the video is in, but the caption box didn't show up: paste the caption yourself")
         await self._replace_text(page, box, captions["caption"])
-        return "Check it, then click Share"
+        return "Check it, then click Share" + ("" if cover_set else f". {COVER_MISSED}")
 
 
 def profile_in_use(profile_dir: Path) -> bool:

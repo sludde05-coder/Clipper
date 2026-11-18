@@ -399,6 +399,7 @@ class ClipperApp:
             "explosion_offset": meta.get("explosion_offset"),
             "length": round(probe_duration(clip), 1),
             "can_rerender": naming.source_for(clip) is not None,
+            "cover": f"/api/cover?id={quote(self._id(clip))}&v={int(clip.stat().st_mtime)}",
             "post": captions_for(meta, clip, self.cfg.post),
             "post_edited": sorted((meta.get("post") or {}).keys()),
             "posted_at": meta.get("posted") or {},
@@ -645,6 +646,30 @@ class ClipperApp:
             self._autoposter = AutoPoster(Path(self.config_path).resolve().parent / "chrome-profile")
         return self._autoposter
 
+    async def _cover(self, clip: Path) -> Path | None:
+        """The clip's cover picture (made now if it's missing or older than the clip)."""
+        from .cover import cover_path, make_cover
+        try:
+            return await make_cover(clip, cover_path(self.clips_dir, clip), self._meta(clip), self.cfg.vertical,
+                                    source=naming.source_for(clip))
+        except Exception as e:  # noqa: BLE001
+            log.warning("couldn't make a cover for %s: %s", clip.name, e)
+            return None
+
+    async def cover(self, request):
+        out = await self._cover(self._clip(request.query.get("id", "")))
+        if out is None:
+            raise web.HTTPNotFound(text="no cover")
+        return web.FileResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def reveal_cover(self, request):
+        body = await request.json()
+        out = await self._cover(self._clip(body.get("id", "")))
+        if out is None:
+            return web.json_response({"error": "Couldn't make the cover"}, status=500)
+        show_file(out)
+        return web.json_response({"ok": True})
+
     async def autofill(self, request):
         """Fill in one platform's upload page for a clip, in Clipper's browser window."""
         body = await request.json()
@@ -666,7 +691,9 @@ class ClipperApp:
         async def run():
             from .autopost import FillError, NeedsSignIn, NotConfirmed
             try:
-                left = await self.autoposter().fill(platform, clip, caps, status, submit=submit)
+                status("Making the cover")
+                cover = await self._cover(clip)
+                left = await self.autoposter().fill(platform, clip, caps, status, submit=submit, cover=cover)
                 if submit:
                     meta = self._meta(clip)
                     meta.setdefault("posted", {})[platform] = datetime.now().isoformat(timespec="seconds")
@@ -887,6 +914,8 @@ class ClipperApp:
         r.add_post("/api/clip/posted", self.mark_posted)
         r.add_post("/api/clip/finish", self.finish_clip)
         r.add_post("/api/clip/reveal", self.reveal)
+        r.add_get("/api/cover", self.cover)
+        r.add_post("/api/clip/reveal-cover", self.reveal_cover)
         r.add_post("/api/clip/to-phone", self.to_phone)
         r.add_post("/api/open-upload", self.open_upload)
         r.add_post("/api/autofill", self.autofill)

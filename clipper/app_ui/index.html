@@ -369,6 +369,12 @@
       <video id="fl-video" controls playsinline muted></video>
       <div style="margin-top:10px;font-weight:700" id="fl-hook"></div>
       <div class="help" id="fl-clipname"></div>
+      <div class="row" style="margin-top:12px;align-items:flex-start;gap:12px">
+        <img id="fl-cover" alt="" style="width:90px;aspect-ratio:9/16;object-fit:cover;border-radius:8px;background:var(--panel2)">
+        <div><b>Cover</b><div class="help">The headline over the best moment. Clipper sets it as the cover when it fills in
+          TikTok and Instagram, so the post never gets a blank green cover.</div>
+          <button class="btn ghost" id="fl-cover-file" style="margin-top:6px">Show the cover file</button></div>
+      </div>
     </div>
     <div class="right">
       <div class="row" style="justify-content:space-between">
@@ -402,11 +408,13 @@
   const PCOLORS = { tiktok: "var(--tiktok)", youtube: "var(--youtube)", instagram: "var(--instagram)" };
   const STEPS = {
     tiktok: ["Drag the clip from the folder window onto the TikTok page (or click Select video)",
-             "Click the description box, delete what's there, paste (Ctrl+V)", "Click Post"],
+             "Click the description box, delete what's there, paste (Ctrl+V)",
+             "Edit cover → Upload cover → pick the cover file (Show the cover file), Confirm", "Click Post"],
     youtube: ["Drag the clip onto the YouTube upload window", "Paste the title (copied), then copy and paste the description",
               "Next → Next → Next, choose Public, Publish"],
     instagram: ["Click + Create → Post and drag the clip in (videos become Reels)",
-                "Pick the 9:16 crop if asked, Next twice, paste the caption", "Click Share"],
+                "Pick the 9:16 crop if asked, Next. Under Cover photo, Select from computer → the cover file",
+                "Next, paste the caption", "Click Share"],
   };
 
   function toast(msg, ms = 2600) {
@@ -786,7 +794,8 @@
     const plats = stepPlatforms(item);
     if (flow.pi >= plats.length) return nextClip();
     const p = plats[flow.pi];
-    const v = $("#fl-video"); if (v.dataset.id !== item.id) { v.src = item.video; v.dataset.id = item.id; }
+    const v = $("#fl-video"); if (v.dataset.id !== item.id) { v.src = item.video; v.dataset.id = item.id; $("#fl-cover").src = item.cover; }
+    $("#fl-cover-file").onclick = () => api("/api/clip/reveal-cover", { id: item.id }).catch(e => toast(e.message));
     $("#fl-hook").textContent = item.hook; $("#fl-clipname").textContent = item.name;
     $("#fl-counter").textContent = `Clip ${flow.ci + 1} of ${flow.items.length}`;
     $("#fl-title").innerHTML = `<span class="pdot" style="background:${PCOLORS[p.key]};margin-right:10px"></span>Post to ${esc(p.name)}`;

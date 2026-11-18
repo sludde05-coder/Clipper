@@ -233,3 +233,30 @@ def test_post_clicked_but_not_confirmed(site, monkeypatch):
             await ap.fill("tiktok", video, {"caption": "x"}, lambda s: None, submit=True)
         return await ap._pages["tiktok"].evaluate("window.__posted")
     assert run(tmp, fn) is True          # it did click, and says it couldn't confirm
+
+
+@pytest.mark.parametrize("platform", ["tiktok", "instagram"])
+def test_cover_picture_is_set(site, platform):
+    video, tmp = site
+    cover = tmp / "cover.jpg"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "color=red:size=180x320", "-frames:v", "1",
+                    str(cover)], check=True)
+    steps = []
+
+    async def fn(ap):
+        left = await ap.fill(platform, video, {"caption": "x"}, steps.append, cover=cover)
+        return left, await ap._pages[platform].evaluate("window.__cover")
+    left, got = run(tmp, fn)
+    assert got == "cover.jpg" and "Setting the cover" in steps
+    assert "Cover:" not in left                      # no "set it yourself" note
+
+
+def test_chrome_decodes_video_in_software(site):
+    """A green cover comes from a frame grabbed out of an empty hardware-decoder buffer."""
+    video, tmp = site
+
+    async def fn(ap):
+        page = await ap._page("tiktok")
+        await page.goto("chrome://version")
+        return await page.inner_text("body")
+    assert "--disable-accelerated-video-decode" in run(tmp, fn)

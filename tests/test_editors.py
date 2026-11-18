@@ -121,3 +121,29 @@ def test_trim_answer_is_kept_sane():
     gw, gh, gx, gy = g["game"]
     assert cx + cw <= 1920 and cy + ch <= 1080 and gx + gw <= 1920 and gy + gh <= 1080
     assert abs(cw / ch - 1080 / g["ht"]) < 0.02 and abs(gw / gh - 1080 / g["hb"]) < 0.02
+
+
+def test_cover_is_the_headline_over_the_best_moment(clip, monkeypatch, tmp_path):
+    from clipper.cover import cover_path, make_cover
+    src, meta_path = clip
+    out, _, meta = run(src, meta_path, VerticalConfig(), monkeypatch)
+    phone = tmp_path / "Kai" / "Phone clips" / out.name
+    phone.parent.mkdir(parents=True)
+    out.replace(phone)
+    cover = cover_path(tmp_path, phone)
+    assert cover == tmp_path / ".covers" / f"Kai__{phone.stem}.jpg"
+    # from the caption-free original: webcam on top, like the clip
+    assert asyncio.run(make_cover(phone, cover, meta, VerticalConfig(), source=src)) == cover
+    assert v.probe_size(cover) == (1080, 1920)
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(cover), "-vf", "crop=2:2:540:150",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], capture_output=True).stdout
+    r, g, b = tuple(raw[:3])
+    assert g > 200 and r < 80 and b < 80, (r, g, b)
+    # made again only when the clip changes
+    made = cover.stat().st_mtime_ns
+    assert asyncio.run(make_cover(phone, cover, meta, VerticalConfig(), source=src)) == cover
+    assert cover.stat().st_mtime_ns == made
+    # without the original, a frame of the phone clip itself
+    cover.unlink()
+    assert asyncio.run(make_cover(phone, cover, meta, VerticalConfig(), source=None)) == cover
+    assert v.probe_size(cover) == (1080, 1920)
