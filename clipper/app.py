@@ -197,6 +197,8 @@ class ClipperApp:
             "jobs": {k: v["state"] for k, v in self.jobs.items() if v["state"] == "running"},
             "platforms": [{"key": k, "name": TARGETS[k].name} for k in self._platforms()],
             "autofill": self.cfg.post.autofill,
+            "autosubmit": self.cfg.post.autofill and self.cfg.post.autosubmit,
+            "pause_between_clips": self.cfg.post.pause_between_clips,
         })
 
     async def logs_since(self, request):
@@ -624,12 +626,24 @@ class ClipperApp:
         def status(text: str) -> None:
             self.jobs[key]["message"] = text
 
+        submit = bool(self.cfg.post.autosubmit and body.get("submit", True))
+
         async def run():
-            from .autopost import FillError, NeedsSignIn
+            from .autopost import FillError, NeedsSignIn, NotConfirmed
             try:
-                left = await self.autoposter().fill(platform, clip, caps, status)
-                self.jobs[key] = {"state": "done", "error": "", "message": left}
-                log.info("📝 %s filled in on %s", clip.name, TARGETS[platform].name)
+                left = await self.autoposter().fill(platform, clip, caps, status, submit=submit)
+                if submit:
+                    meta = self._meta(clip)
+                    meta.setdefault("posted", {})[platform] = datetime.now().isoformat(timespec="seconds")
+                    self._save_meta(clip, meta)
+                    self.jobs[key] = {"state": "posted", "error": "", "message": left}
+                    log.info("🚀 %s: %s", clip.name, left)
+                else:
+                    self.jobs[key] = {"state": "done", "error": "", "message": left}
+                    log.info("📝 %s filled in on %s", clip.name, TARGETS[platform].name)
+            except NotConfirmed as e:
+                self.jobs[key] = {"state": "unconfirmed", "error": "", "message": str(e)}
+                log.warning("%s on %s: %s", clip.name, TARGETS[platform].name, e)
             except NeedsSignIn:
                 name = TARGETS[platform].name.split()[0]
                 self.jobs[key] = {"state": "signin", "error": "",
@@ -723,7 +737,8 @@ class ClipperApp:
         p = self.cfg.post
         posting = [{"key": k, "name": TARGETS[k].name, "enabled": k in p.platforms,
                     "account": getattr(p, f"{k}_account"), "tags": getattr(p, f"{k}_tags")} for k in TARGETS]
-        return web.json_response({"fields": fields, "posting": posting, "credit": p.credit, "autofill": p.autofill})
+        return web.json_response({"fields": fields, "posting": posting, "credit": p.credit, "autofill": p.autofill,
+                                  "autosubmit": p.autosubmit, "pause_between_clips": p.pause_between_clips})
 
     @staticmethod
     def _default(cfg: Config, section: str, key: str):
@@ -738,7 +753,7 @@ class ClipperApp:
         path = Path(self.config_path)
         text = path.read_text(encoding="utf-8")
         allowed = {(s, k): kind for s, k, _l, kind, _h, _o in SETTINGS}
-        allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool", ("post", "autofill"): "bool",
+        allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool", ("post", "autofill"): "bool", ("post", "autosubmit"): "bool", ("post", "pause_between_clips"): "number",
                         **{("post", f"{k}_{f}"): "text" for k in TARGETS for f in ("account", "tags")}})
         for item in body.get("values", []):
             kind = allowed.get((item.get("section"), item.get("key")))

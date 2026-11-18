@@ -48,6 +48,10 @@ class FillError(Exception):
     pass
 
 
+class NotConfirmed(Exception):
+    """Post was clicked, but the site didn't confirm it went up (so it might not have)."""
+
+
 class AutoPoster:
     def __init__(self, profile_dir: Path):
         self.profile_dir = profile_dir
@@ -236,21 +240,31 @@ class AutoPoster:
 
     # ------------------------------------------------------------ the platforms
 
-    async def fill(self, platform: str, video: Path, captions: dict[str, str], status: Status) -> str:
-        """Fill in one platform's upload page. Returns what's left for you to click."""
+    async def fill(self, platform: str, video: Path, captions: dict[str, str], status: Status,
+                   submit: bool = False) -> str:
+        """Fill in one platform's upload page. Returns what's left for you to click, or, with
+        submit=True, also clicks Post / Publish / Share and returns the site's confirmation."""
         async with self._lock:
-            page = await self._page(platform)
-            await _say(status, "Opening the upload page")
-            await page.goto(UPLOAD_URL[platform], wait_until="domcontentloaded")
-            if self._looks_signed_out(page.url):
-                raise NeedsSignIn(platform)
-            if platform == "tiktok":
-                return await self._tiktok(page, video, captions, status)
-            if platform == "youtube":
-                return await self._youtube(page, video, captions, status)
-            if platform == "instagram":
-                return await self._instagram(page, video, captions, status)
-            raise FillError(f"unknown platform {platform}")
+            left = await self._fill(platform, video, captions, status)
+            if not submit:
+                return left
+            page = self._pages[platform]
+            return await {"tiktok": self._post_tiktok, "youtube": self._post_youtube,
+                          "instagram": self._post_instagram}[platform](page, status)
+
+    async def _fill(self, platform: str, video: Path, captions: dict[str, str], status: Status) -> str:
+        page = await self._page(platform)
+        await _say(status, "Opening the upload page")
+        await page.goto(UPLOAD_URL[platform], wait_until="domcontentloaded")
+        if self._looks_signed_out(page.url):
+            raise NeedsSignIn(platform)
+        if platform == "tiktok":
+            return await self._tiktok(page, video, captions, status)
+        if platform == "youtube":
+            return await self._youtube(page, video, captions, status)
+        if platform == "instagram":
+            return await self._instagram(page, video, captions, status)
+        raise FillError(f"unknown platform {platform}")
 
     async def _tiktok(self, page, video, captions, status) -> str:
         await self._upload(page, video, status, "tiktok")
@@ -292,6 +306,58 @@ class AutoPoster:
             await public.click()
             return "Check it, then click Publish"
         return "Choose Public, then click Publish"
+
+    # ------------------------------------------------------------ clicking Post
+
+    async def _post_tiktok(self, page, status) -> str:
+        await _say(status, "Waiting for the upload to finish")
+        btn = await _wait_enabled(page, ['button[data-e2e="post_video_button"]',
+                                         page.get_by_role("button", name=re.compile(r"^\s*(Post|Publicera|Lägg upp)\s*$", re.I))],
+                                  UPLOAD_WAIT)
+        if btn is None:
+            raise FillError("the Post button never became clickable (upload not finished?): check TikTok and post by hand")
+        await _say(status, "Posting")
+        await btn.click()
+        try:  # "Continue to post?" after TikTok's content check
+            await page.get_by_role("button", name=re.compile(r"^\s*(Post now|Publicera nu)\s*$", re.I)).first.click(timeout=6000)
+        except Exception:  # noqa: BLE001
+            pass
+        await _say(status, "Waiting for TikTok to confirm")
+        if await _wait_for_any(page, [re.compile(r"(your video (has been|is being) (uploaded|posted)|video (posted|published)|"
+                                                 r"manage (your )?posts|uploaded successfully)", re.I)],
+                               url_parts=("/tiktokstudio/content", "/manage")):
+            return "Posted on TikTok"
+        raise NotConfirmed("Clicked Post, but TikTok didn't confirm it")
+
+    async def _post_youtube(self, page, status) -> str:
+        await _say(status, "Waiting for YouTube's checks")
+        btn = await _wait_enabled(page, ["#done-button"], UPLOAD_WAIT)
+        if btn is None:
+            raise FillError("the Publish button never became clickable: check YouTube Studio and publish by hand")
+        await _say(status, "Publishing")
+        await btn.click()
+        await _say(status, "Waiting for YouTube to confirm")
+        if await _wait_for_any(page, ["ytcp-video-share-dialog", "ytcp-uploads-still-processing-dialog",
+                                      re.compile(r"(video published|video processing|still processing)", re.I)]):
+            try:
+                await page.locator("#close-button").first.click(timeout=3000)
+            except Exception:  # noqa: BLE001
+                pass
+            return "Published on YouTube"
+        raise NotConfirmed("Clicked Publish, but YouTube didn't confirm it")
+
+    async def _post_instagram(self, page, status) -> str:
+        await _say(status, "Sharing")
+        share = page.get_by_role("button", name=re.compile(r"^\s*(Share|Dela)\s*$", re.I))
+        btn = await _wait_enabled(page, [share], 60)
+        if btn is None:
+            raise FillError("couldn't find the Share button: check Instagram and share by hand")
+        await btn.click()
+        await _say(status, "Waiting for Instagram to confirm (uploading)")
+        if await _wait_for_any(page, [re.compile(r"((reel|post) (has been|was) shared|your reel has been shared|"
+                                                 r"har delats)", re.I)], timeout=UPLOAD_WAIT):
+            return "Shared on Instagram"
+        raise NotConfirmed("Clicked Share, but Instagram didn't confirm it")
 
     async def _instagram(self, page, video, captions, status) -> str:
         await _say(status, "Opening a new post")
@@ -370,6 +436,45 @@ def find_chrome() -> Path | None:
         candidates += [Path(p) for p in (shutil.which("google-chrome"), shutil.which("google-chrome-stable"),
                                          shutil.which("chromium")) if p]
     return next((c for c in candidates if c.exists()), None)
+
+
+UPLOAD_WAIT = 15 * 60    # how long to wait for an upload to finish before Post can be clicked
+CONFIRM_WAIT = 4 * 60    # how long to wait for the site to say the post went up
+
+
+async def _wait_enabled(page, selectors: list, timeout: float):
+    """The first selector (CSS string or a ready locator) that is visible and clickable."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        for sel in selectors:
+            loc = (page.locator(sel) if isinstance(sel, str) else sel).first
+            try:
+                if await loc.is_visible() and await loc.is_enabled() and \
+                        (await loc.get_attribute("aria-disabled")) != "true" and \
+                        (await loc.get_attribute("data-disabled")) != "true":
+                    return loc
+            except Exception:  # noqa: BLE001
+                continue
+        await asyncio.sleep(1)
+    return None
+
+
+async def _wait_for_any(page, patterns: list, url_parts: tuple = (), timeout: float | None = None) -> bool:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + (CONFIRM_WAIT if timeout is None else timeout)
+    while loop.time() < deadline:
+        if any(u in page.url for u in url_parts):
+            return True
+        for pat in patterns:
+            loc = page.locator(pat) if isinstance(pat, str) else page.get_by_text(pat)
+            try:
+                if await loc.first.is_visible():
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        await asyncio.sleep(1)
+    return False
 
 
 async def _say(status: Status, text: str) -> None:

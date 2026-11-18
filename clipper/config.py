@@ -53,6 +53,8 @@ class PostConfig:
     platforms: list[str] = field(default_factory=lambda: ["tiktok", "youtube", "instagram"])
     credit: bool = True             # name the streamer and platform in every caption
     autofill: bool = True           # Post fills in the upload page in Clipper's browser window
+    autosubmit: bool = False        # ...and clicks Post / Publish / Share too (against the sites' rules: account risk)
+    pause_between_clips: int = 120  # seconds between clips when posting by itself, so it doesn't look like a bot
     tiktok_account: str = ""        # shown in the app, e.g. "@myclips"
     youtube_account: str = ""
     instagram_account: str = ""

@@ -204,3 +204,32 @@ def test_background_mode_is_switched_off_for_the_profile(tmp_path):
     ap = autopost.AutoPoster(tmp_path / "p")
     ap._name_profile()
     assert json.loads((tmp_path / "p" / "Local State").read_text(encoding="utf-8"))["background_mode"]["enabled"] is False
+
+
+@pytest.mark.parametrize("platform,caps,expect", [
+    ("tiktok", {"caption": "x"}, "Posted on TikTok"),
+    ("youtube", {"title": "t #shorts", "description": "d"}, "Published on YouTube"),
+    ("instagram", {"caption": "x"}, "Shared on Instagram"),
+])
+def test_click_post_for_me(site, platform, caps, expect):
+    video, tmp = site
+    steps = []
+
+    async def fn(ap):
+        msg = await ap.fill(platform, video, caps, steps.append, submit=True)
+        return msg, await ap._pages[platform].evaluate("window.__posted")
+    msg, posted = run(tmp, fn)
+    assert msg == expect and posted is True
+    assert any("confirm" in s for s in steps)
+
+
+def test_post_clicked_but_not_confirmed(site, monkeypatch):
+    video, tmp = site
+    monkeypatch.setitem(autopost.UPLOAD_URL, "tiktok", autopost.UPLOAD_URL["tiktok"] + "?silent=1")
+    monkeypatch.setattr(autopost, "CONFIRM_WAIT", 3)
+
+    async def fn(ap):
+        with pytest.raises(autopost.NotConfirmed):
+            await ap.fill("tiktok", video, {"caption": "x"}, lambda s: None, submit=True)
+        return await ap._pages["tiktok"].evaluate("window.__posted")
+    assert run(tmp, fn) is True          # it did click, and says it couldn't confirm

@@ -77,6 +77,15 @@ YouTube titles credit the streamer: `<headline> | <Streamer> #shorts`.
 **If a step can't be filled in** (the site changed its page, or wants you to sign in), Clipper says so and you do that
 step by hand: the caption is already copied (Ctrl+V) and the clip file is shown in a folder window to drag in.
 
+**Posting completely by itself (optional):** turn on **Also click Post for me** in Posting. Then **Post selected**
+asks once, and Clipper does everything for each clip and platform: fills it in, waits for the upload, clicks
+Post / Publish / Share, waits for the site to confirm, marks it posted, and moves on. It waits **2 minutes between
+clips** (change it under *Minutes between clips*), because a burst of uploads looks like a bot. Press **Close** to
+stop. If a site doesn't confirm a post, Clipper stops on that one and asks you to check.
+**TikTok, YouTube and Instagram forbid posting with automated browsers.** With this on, the risk of an account
+being limited or banned is real, more so than with just filling in. Start with a few clips, and turn it off if a
+site starts asking for extra checks.
+
 **About the account risk:** the sites can see that Clipper's window is an automated browser. If one starts asking for
 extra checks or blocks uploads, turn off **Fill in the upload page for me** in Posting. Then Post opens the page in your
 normal browser, shows the file and copies the caption, and you drag and paste yourself.

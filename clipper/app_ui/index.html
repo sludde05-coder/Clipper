@@ -324,6 +324,18 @@
       </div>
       <div class="card" style="margin-top:16px">
         <div class="row" style="justify-content:space-between">
+          <div><b>Also click Post for me</b><div class="help">Clipper waits for each upload, clicks Post / Publish / Share,
+            checks the site confirms it, and moves on to the next clip by itself. <b>TikTok, YouTube and Instagram forbid
+            posting with automated browsers</b>, so this carries a real risk of the account being limited or banned.
+            Needs "Fill in the upload page for me" on.</div></div>
+          <label class="switch"><input type="checkbox" id="autosubmit"><i></i></label>
+        </div>
+        <label class="field" style="margin-top:12px;max-width:340px"><span>Minutes between clips</span>
+          <input type="number" id="pausemins" min="0" step="0.5"><div class="help">Posting many clips back-to-back looks
+          like a bot. 2 minutes or more is safer.</div></label>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="row" style="justify-content:space-between">
           <div><b>Credit the streamer</b><div class="help">Adds "🎥 Name on Twitch" to every caption.</div></div>
           <label class="switch"><input type="checkbox" id="credit"><i></i></label>
         </div>
@@ -740,6 +752,11 @@
     const items = [];
     for (const id of ids) { try { items.push(await api("/api/clip?id=" + encodeURIComponent(id))); } catch (e) {} }
     if (!items.length) return;
+    if (state.autosubmit) {
+      const names = state.platforms.map(p => p.name).join(", ");
+      if (!confirm(`Clipper will post ${items.length} clip${items.length > 1 ? "s" : ""} to ${names} by itself, ` +
+                   `${Math.round(state.pause_between_clips / 60 * 10) / 10} min apart. You can stop with Close. Start?`)) return;
+    }
     flow = { items, ci: 0, pi: 0, posted: {} };
     $("#flow").hidden = false;
     enterStep(true);
@@ -767,7 +784,12 @@
     const first = p.key === "youtube" ? c.title : c.caption;
     copy(first);
     $("#fl-open").textContent = state.autofill ? "Fill in again" : "Open upload page again";
-    if (state.autofill) {
+    if (state.autosubmit) {
+      $("#fl-steps").innerHTML = [`Clipper puts the video and ${p.key === "youtube" ? "title and description" : "caption"} in`,
+        "It waits for the upload, clicks " + ({ tiktok: "Post", youtube: "Publish", instagram: "Share" })[p.key] + " and waits for the site to confirm",
+        "Then it moves on by itself. Press Close to stop at any time"].map(s => `<li>${esc(s)}</li>`).join("");
+      startFill(item, p);
+    } else if (state.autofill) {
       $("#fl-steps").innerHTML = [`Clipper puts the video and ${p.key === "youtube" ? "title and description" : "caption"} in, in its own browser window`,
         "Check it there and click " + ({ tiktok: "Post", youtube: "Publish", instagram: "Share" })[p.key],
         "Come back here and press ✓ Posted, next"].map(s => `<li>${esc(s)}</li>`).join("");
@@ -792,6 +814,17 @@
       if (!flow || flow.fillToken !== token) return;            // moved on to another step
       const j = await api("/api/autofill/job?key=" + encodeURIComponent(r.key)).catch(() => ({ state: "running", message: "" }));
       if (j.state === "running") { box.innerHTML = `<span class="spin"></span> ${esc(j.message || "Working")}…`; continue; }
+      if (j.state === "posted") {
+        box.innerHTML = `🚀 <b>${esc(j.message)}.</b> Moving on…`;
+        item.posted_at[p.key] = "now";
+        setTimeout(() => { if (flow && flow.fillToken === token) enterStep(false); }, 2500);
+        return;
+      }
+      if (j.state === "unconfirmed") {
+        box.innerHTML = `⚠️ ${esc(j.message)}. Check ${esc(p.name.split(" ")[0])} in Clipper's Chrome window: press <b>✓ Posted, next</b>
+          if it went up, or <b>Skip</b> if it didn't.`;
+        return;
+      }
       if (j.state === "done") {
         box.innerHTML = `✅ <b>Filled in.</b> ${esc(j.message)} in Clipper's browser window, then come back and press <b>✓ Posted, next</b>.`;
         return;
@@ -834,7 +867,26 @@
     await api("/api/clip/finish", { id: flow.items[flow.ci].id }).catch(() => {});
     flow.ci++; flow.pi = 0;
     if (flow.ci >= flow.items.length) return endFlow(true);
-    enterStep(true);
+    if (state.autosubmit && state.pause_between_clips > 0) await pause(state.pause_between_clips);
+    if (flow) enterStep(true);
+  }
+  function pause(seconds) {
+    // Space posts out, so the sites don't see a burst of uploads (that looks like a bot).
+    return new Promise(resolve => {
+      const box = $("#fl-status"); box.hidden = false;
+      const until = Date.now() + seconds * 1000;
+      const token = (flow.fillToken = (flow.fillToken || 0) + 1);
+      const tick = () => {
+        if (!flow || flow.fillToken !== token) return resolve();
+        const left = Math.max(0, Math.round((until - Date.now()) / 1000));
+        box.innerHTML = `⏳ Next clip in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}, spacing posts out so the
+          sites don't take it for a bot. <button class="btn" id="fl-now">Post the next one now</button>`;
+        $("#fl-now").onclick = () => { flow.fillToken++; resolve(); };
+        if (left <= 0) return resolve();
+        setTimeout(tick, 1000);
+      };
+      tick();
+    });
   }
   function endFlow(done) {
     $("#flow").hidden = true; const v = $("#fl-video"); v.pause(); v.removeAttribute("src"); v.dataset.id = ""; v.load();
@@ -850,6 +902,8 @@
     postingData = await api("/api/settings");
     $("#credit").checked = postingData.credit;
     $("#autofill").checked = postingData.autofill;
+    $("#autosubmit").checked = postingData.autosubmit;
+    $("#pausemins").value = Math.round(postingData.pause_between_clips / 60 * 10) / 10;
     $("#platforms").innerHTML = postingData.posting.map(p => `<div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <h2 style="margin:0;display:flex;align-items:center;gap:8px"><span class="pdot" style="background:${PCOLORS[p.key]}"></span>${esc(p.name)}</h2>
@@ -869,7 +923,9 @@
   $("#saveposting").onclick = async () => {
     const values = [{ section: "post", key: "platforms", value: $$("[data-en]").filter(i => i.checked).map(i => i.dataset.en) },
                     { section: "post", key: "credit", value: $("#credit").checked },
-                    { section: "post", key: "autofill", value: $("#autofill").checked }];
+                    { section: "post", key: "autofill", value: $("#autofill").checked },
+                    { section: "post", key: "autosubmit", value: $("#autosubmit").checked },
+                    { section: "post", key: "pause_between_clips", value: String(Math.round((parseFloat($("#pausemins").value) || 0) * 60)) }];
     $$("[data-acc]").forEach(i => values.push({ section: "post", key: i.dataset.acc + "_account", value: i.value }));
     $$("[data-tags]").forEach(i => values.push({ section: "post", key: i.dataset.tags + "_tags", value: i.value }));
     await api("/api/settings", { values }); toast("Saved ✓"); refreshState();

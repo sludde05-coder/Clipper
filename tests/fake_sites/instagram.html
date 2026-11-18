@@ -7,7 +7,8 @@
   <input type="file" id="f" style="display:none">
   <div id="reels" hidden>Video posts are now shared as reels <button id="ok">OK</button></div>
   <div role="button" id="next" hidden tabindex="0">Next</div>
-  <div id="capwrap" hidden><div aria-label="Write a caption..." contenteditable="true" id="cap"></div><div role="button">Share</div></div>
+  <div id="capwrap" hidden><div aria-label="Write a caption..." contenteditable="true" id="cap"></div><div role="button" id="share" tabindex="0">Share</div></div>
+  <div id="shared" hidden>Your reel has been shared.</div>
 </div>
 <script>
 let stage = 0;
@@ -16,4 +17,5 @@ postitem.onclick = e => { e.preventDefault(); menu.hidden = true; dlg.hidden = f
 f.onchange = () => { window.__file = f.files[0].name; reels.hidden = false; };
 ok.onclick = () => { reels.hidden = true; next.hidden = false; };
 next.onclick = () => { stage++; window.__nexts = stage; if (stage >= 2) { next.hidden = true; capwrap.hidden = false; } };
+share.onclick = () => { window.__posted = true; capwrap.hidden = true; setTimeout(() => shared.hidden = false, 1500); };
 </script>

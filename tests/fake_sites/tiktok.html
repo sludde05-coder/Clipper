@@ -4,8 +4,12 @@
 <input type="file" accept="video/*" style="display:none" id="f">
 <div id="after" hidden>
   <div data-e2e="caption_container"><div class="public-DraftEditor-content" contenteditable="true" id="cap"></div></div>
-  <button>Post</button>
+  <button data-e2e="post_video_button" id="post" disabled>Post</button>
 </div>
+<div id="done" hidden>Your video has been uploaded</div>
 <script>
-f.onchange = () => setTimeout(() => { after.hidden = false; cap.textContent = f.files[0].name; window.__file = f.files[0].name; }, 600);
+f.onchange = () => setTimeout(() => { after.hidden = false; cap.textContent = f.files[0].name; window.__file = f.files[0].name;
+  setTimeout(() => post.disabled = false, 1500); }, 600);   // Post becomes clickable once "uploaded"
+const silent = location.search.includes("silent");          // a variant that never confirms
+post.onclick = () => { window.__posted = true; if (!silent) setTimeout(() => done.hidden = false, 800); };
 </script>
