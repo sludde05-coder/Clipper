@@ -24,6 +24,7 @@ from .language import looks_non_english, matches_language
 from .models import Stream, parse_target
 
 log = logging.getLogger(__name__)
+APP_UA = {"User-Agent": "Clipper/1.0 (+https://github.com/sludde05-coder/clipper)"}
 
 
 class Discovery:
@@ -154,13 +155,13 @@ class Discovery:
             self._warn_once("kick", "Kick credentials missing: skipping Kick discovery")
             return None
         if not self._kick_token or self._kick_token[1] < time.time() + 60:
-            async with self.s.post("https://id.kick.com/oauth/token", data={
+            async with self.s.post("https://id.kick.com/oauth/token", headers=APP_UA, data={
                 "grant_type": "client_credentials", "client_id": c.kick_client_id,
                 "client_secret": c.kick_client_secret}) as r:
                 r.raise_for_status()
                 j = await r.json()
             self._kick_token = (j["access_token"], time.time() + j.get("expires_in", 3600))
-        return {"Authorization": f"Bearer {self._kick_token[0]}", "Accept": "application/json"}
+        return {**APP_UA, "Authorization": f"Bearer {self._kick_token[0]}", "Accept": "application/json"}
 
     async def _kick(self) -> list[Stream]:
         h = await self._kick_headers()

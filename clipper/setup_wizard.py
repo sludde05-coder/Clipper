@@ -62,9 +62,15 @@ def ensure_config(path: Path) -> None:
 # Each returns (ok, message). ok=None means "couldn't tell" (e.g. no internet).
 
 
+# Identify as this app rather than the generic "Python-urllib", which some APIs refuse.
+APP_HEADERS = {"User-Agent": "Clipper/1.0 (+https://github.com/sludde05-coder/clipper)", "Accept": "application/json"}
+
+
 def _post(url: str, data: dict) -> dict:
     body = urllib.parse.urlencode(data).encode()
-    with urllib.request.urlopen(urllib.request.Request(url, data=body, method="POST"), timeout=15) as r:
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        **APP_HEADERS, "Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read())
 
 
@@ -73,8 +79,18 @@ def _check(fn: Callable[[], None]) -> tuple[bool | None, str]:
         fn()
         return True, "works"
     except urllib.error.HTTPError as e:
-        if e.code in (400, 401, 403):
-            return False, f"was rejected ({e.code}). It was probably copied wrong"
+        try:
+            body = e.read(2000).decode(errors="replace").lower()
+        except Exception:  # noqa: BLE001
+            body = ""
+        if e.code == 403 and ("<html" in body or "cloudflare" in body):
+            # A web page instead of an API answer: the site refused the request itself.
+            return None, ("couldn't be checked: the site refused the request before looking at the key "
+                          "(403 from its protection layer). This doesn't mean the key is wrong")
+        if e.code in (400, 401):
+            return False, f"was rejected ({e.code}). Check you copied the right one (a fresh secret if you made a new one)"
+        if e.code == 403:
+            return False, "was refused (403). The app may not be allowed to do this yet; check its settings on the site"
         return None, f"couldn't be checked (server said {e.code})"
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         return None, f"couldn't be checked (no connection: {getattr(e, 'reason', e)})"
