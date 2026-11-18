@@ -192,7 +192,12 @@ async def recover_unfinished(cfg: Config) -> int:
                 leftover.unlink(missing_ok=True)  # a half-made phone clip from last time
                 continue
             details = naming.details_path(leftover)
-            if not details.exists():
+            try:
+                json.loads(details.read_text(encoding="utf-8"))
+                usable = True
+            except (OSError, ValueError):
+                usable = False  # missing, or half-written when the save crashed
+            if not usable:
                 details.parent.mkdir(parents=True, exist_ok=True)
                 details.write_text(json.dumps({"name": naming.streamer_dir(leftover).name, "clip": leftover.name,
                                                "explosion_offset": cfg.clips.pre_roll, "recovered": True},

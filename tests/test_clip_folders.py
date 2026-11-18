@@ -100,6 +100,9 @@ def test_unfinished_clip_is_recovered(tmp_path, monkeypatch):
     work.mkdir(parents=True)
     (work / "KaiCenat_2026-11-19_21-34-12_1.mp4").write_bytes(b"original")
     (work / "KaiCenat_2026-11-19_21-34-12_1.phone.mp4").write_bytes(b"half")   # left over from a crash
+    details = tmp_path / "clips" / "KaiCenat" / naming.DETAILS
+    details.mkdir(parents=True)
+    (details / "KaiCenat_2026-11-19_21-34-12_1.json").write_text('{\n  "platform": "twi', encoding="utf-8")  # cut off
 
     async def fake_render(clip, vcfg, out=None, **kw):
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -111,5 +114,7 @@ def test_unfinished_clip_is_recovered(tmp_path, monkeypatch):
     root = tmp_path / "clips" / "KaiCenat"
     assert (root / "Phone clips" / "KaiCenat_2026-11-19_21-34-12_1.mp4").exists()
     assert (root / ".source" / "KaiCenat_2026-11-19_21-34-12_1.mp4").exists()
-    assert (root / "Captions and details" / "KaiCenat_2026-11-19_21-34-12_1.json").exists()
+    import json
+    meta = json.loads((root / "Captions and details" / "KaiCenat_2026-11-19_21-34-12_1.json").read_text(encoding="utf-8"))
+    assert meta["recovered"] and meta["name"] == "KaiCenat"
     assert list(work.iterdir()) == []
