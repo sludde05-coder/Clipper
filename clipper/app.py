@@ -170,7 +170,7 @@ class ClipperApp:
         except web.HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            log.exception("app request failed: %s", request.path)
+            log.error("app request failed: %s: %s: %s", request.path, type(e).__name__, e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     # ------------------------------------------------------------ basics
@@ -258,7 +258,13 @@ class ClipperApp:
         for streamer in self.clips_dir.iterdir():
             if streamer.is_dir() and streamer.name != DELETED and not streamer.name.startswith("."):
                 out += [p for p in (streamer / naming.PHONE).glob("*.mp4") if not p.name.endswith(".rendering.mp4")]
-        return sorted(out, key=lambda p: p.stat().st_mtime, reverse=True)
+
+        def newest(p: Path) -> float:
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
+        return sorted(out, key=newest, reverse=True)
 
     def _summary(self, clip: Path) -> dict:
         meta = self._meta(clip)
@@ -279,7 +285,12 @@ class ClipperApp:
         }
 
     async def clips(self, request):
-        clips = [self._summary(c) for c in self._list_clips()]
+        clips = []
+        for c in self._list_clips():
+            try:
+                clips.append(self._summary(c))
+            except (OSError, ValueError) as e:  # e.g. a file that's being moved right now
+                log.debug("skipping %s in the clip list: %s", c, e)
         streamers: dict[str, dict] = {}
         for c in clips:
             s = streamers.setdefault(c["streamer"], {"name": c["streamer"], "count": 0, "to_post": 0})
@@ -354,7 +365,9 @@ class ClipperApp:
                         post_caption=cap.get("post_caption", ""), source="edited")
             layout = body.get("layout") if body.get("layout") in ("blur", "crop") else self.cfg.vertical.layout
             vcfg = replace(self.cfg.vertical, layout=layout)
-            tmp_out = clip.with_name(clip.stem + ".rendering.mp4")
+            work = clip.parent.parent / naming.WORK
+            work.mkdir(parents=True, exist_ok=True)
+            tmp_out = work / (clip.stem + ".rendering.mp4")  # out of Phone clips until it's finished
             details = self._details(clip)
             done = await render_vertical(source, vcfg, out=tmp_out, meta_path=details, plan=plan, words=words)
             if not done:
@@ -366,7 +379,7 @@ class ClipperApp:
             log.info("✏️  re-rendered %s with your edits", clip.name)
             self.jobs[cid] = {"state": "done", "error": ""}
         except Exception as e:  # noqa: BLE001
-            clip.with_name(clip.stem + ".rendering.mp4").unlink(missing_ok=True)
+            (clip.parent.parent / naming.WORK / (clip.stem + ".rendering.mp4")).unlink(missing_ok=True)
             log.error("couldn't re-render %s: %s", clip.name, e)
             self.jobs[cid] = {"state": "error", "error": str(e)}
 

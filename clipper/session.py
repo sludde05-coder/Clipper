@@ -129,9 +129,25 @@ class ChannelSession:
         if not self.cfg.vertical.enabled:
             naming.move_into(out, folder / naming.ORIGINALS)
             return
-        phone = await render_vertical(out, self.cfg.vertical, out=naming.phone_path(out),
+        # Made in .work and moved into Phone clips only when finished, so nothing ever sees a half-written file.
+        rendering = out.with_name(out.stem + ".phone.mp4")
+        phone = await render_vertical(out, self.cfg.vertical, out=rendering,
                                       languages=self.cfg.discovery.languages, recent_dir=Path(c.output_dir),
                                       meta_path=details, aside_dir=folder / naming.OTHER_LANGUAGES)
+        if phone is not None:
+            final = naming.phone_path(out)
+            final.parent.mkdir(parents=True, exist_ok=True)
+            rendering.replace(final)
+            phone = final
+            try:
+                meta = json.loads(details.read_text(encoding="utf-8"))
+                meta["vertical"] = final.name
+                details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+            except (OSError, ValueError):
+                pass
+            log.info("📱 phone clip ready: %s", final.name)
+        else:
+            rendering.unlink(missing_ok=True)
         if not out.exists():
             return  # set aside (another language)
         if phone is None:

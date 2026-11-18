@@ -164,5 +164,5 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
                             "words": [[round(w.start, 2), round(w.end, 2), w.text] for w in words],
                             "layout": cfg.layout}
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
-        log.info("📱 saved %s", out)
+        log.info("rendered %s", out.name)
         return out
