@@ -199,3 +199,33 @@ def test_bulk_delete_restore_and_delete_forever(tmp_path):
     run(conf, fn)
     assert phone.exists() and src.exists() and not second.exists()
     assert not (tmp_path / "clips" / "Deleted clips" / "KaiCenat").exists()
+
+
+def test_clips_being_made_failed_and_set_aside_are_reported(tmp_path, monkeypatch):
+    conf, phone, det, src = make_library(tmp_path)
+    root = tmp_path / "clips" / "KaiCenat"
+    for folder, name in ((naming.WORK, "KaiCenat_2026-11-19_22-00-00_2"),
+                         (naming.NOT_CONVERTED, "KaiCenat_2026-11-19_22-10-00_3"),
+                         (naming.OTHER_LANGUAGES, "KaiCenat_2026-11-19_22-20-00_4")):
+        (root / folder).mkdir(parents=True, exist_ok=True)
+        (root / folder / f"{name}.mp4").write_bytes(src.read_bytes())
+    (root / naming.WORK / "KaiCenat_2026-11-19_22-00-00_2.phone.mp4").write_bytes(b"half")  # ignored
+    calls = []
+
+    async def fake_finish(work, details, cfg):
+        calls.append(work.name)
+        return None
+    import clipper.session
+    monkeypatch.setattr(clipper.session, "finish_clip", fake_finish)
+
+    async def fn(c, app):
+        d = await (await c.get("/api/clips")).json()
+        assert [m["number"] for m in d["making"]] == [2]
+        assert [m["number"] for m in d["failed"]] == [3]
+        assert [m["number"] for m in d["other_languages"]] == [4]
+        r = await (await c.post("/api/clips/retry", headers=H, json={"clips": []})).json()
+        assert r["retrying"] == 1
+        await asyncio.sleep(0.2)
+    run(conf, fn)
+    assert calls == ["KaiCenat_2026-11-19_22-10-00_3.mp4"]
+    assert (root / naming.WORK / "KaiCenat_2026-11-19_22-10-00_3.mp4").exists()

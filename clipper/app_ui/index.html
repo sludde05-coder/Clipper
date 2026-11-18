@@ -240,6 +240,7 @@
                 <button class="btn danger" id="purgeall">Empty deleted clips</button>
               </span>
             </div>
+            <div id="sidenotes"></div>
             <div class="cards" id="cards"></div>
           </div>
         </div>
@@ -461,12 +462,13 @@
 
   // ---------------------------------------------------------------- clips library
   let clips = [], streamers = [], current = "", filter = "todo", selected = new Set();
-  let binClips = [], binMb = 0;
+  let binClips = [], binMb = 0, making = [], failed = [], otherLang = [];
   const BIN = "__deleted__";
   const isPosted = c => Object.values(c.posted).length > 0 && Object.values(c.posted).every(Boolean);
   async function loadClips() {
     let data; try { data = await api("/api/clips"); } catch (e) { return; }
     clips = data.clips; streamers = data.streamers;
+    making = data.making || []; failed = data.failed || []; otherLang = data.other_languages || [];
     try { const b = await api("/api/deleted"); binClips = b.clips; binMb = b.total_mb; } catch (e) {}
     const todo = clips.filter(c => !isPosted(c)).length;
     $("#navcount").hidden = !todo; $("#navcount").textContent = todo;
@@ -486,16 +488,24 @@
     });
     const inBin = current === BIN;
     $("#filter").hidden = inBin; $("#postsel").hidden = inBin; $("#delsel").hidden = inBin; $("#bintools").hidden = !inBin;
+    $("#sidenotes").hidden = inBin;
     if (inBin) return renderBin();
+    renderSideNotes();
     if ($("#openstreamer")) $("#openstreamer").onclick = () => api("/api/open-folder", { which: "streamer", name: current });
 
     const list = visible();
-    if (!clips.length) {
+    const mine = x => !current || x.streamer === current;
+    const makingCards = making.filter(mine).map(m => `<div class="clipcard" style="cursor:default">
+        <div class="thumb" style="display:grid;place-items:center;background:var(--panel2)">
+          <div style="text-align:center;color:var(--muted);font-weight:600"><span class="spin"></span><br><br>Making the<br>phone clip…</div></div>
+        <div class="info"><div class="hook">New clip</div>
+          <div class="meta">${esc(m.streamer)} · ${esc(m.date)} ${esc(m.time)} · #${m.number}</div></div></div>`).join("");
+    if (!clips.length && !makingCards) {
       $("#cards").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>No clips yet</b>Start clipping, and clips appear here as soon as chat explodes.</div>`;
-    } else if (!list.length) {
+    } else if (!list.length && !makingCards) {
       $("#cards").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Nothing here</b>${filter === "todo" ? "Everything here is posted. 🎉" : "No clips match."}</div>`;
     } else {
-      $("#cards").innerHTML = list.map(c => `<div class="clipcard ${selected.has(c.id) ? "sel" : ""}" data-id="${esc(c.id)}">
+      $("#cards").innerHTML = makingCards + list.map(c => `<div class="clipcard ${selected.has(c.id) ? "sel" : ""}" data-id="${esc(c.id)}">
         <div class="thumb" style="background-image:url('${c.thumb}')">
           <div class="check" data-act="sel">${selected.has(c.id) ? "✓" : ""}</div>
           <div class="badges">${state.platforms.map(p => `<span class="tag ${c.posted[p.key] ? "done" : ""}">${c.posted[p.key] ? "✓ " : ""}${esc(p.name.split(" ")[0])}</span>`).join("")}</div>
@@ -504,7 +514,7 @@
         <div class="info"><div class="hook">${esc(c.hook || "No headline")}</div>
           <div class="meta">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)} · #${c.number}</div></div></div>`).join("");
     }
-    $$("#cards .clipcard").forEach(card => card.onclick = ev => {
+    $$("#cards .clipcard[data-id]").forEach(card => card.onclick = ev => {
       const id = card.dataset.id;
       if (ev.target.closest('[data-act="sel"]') || ev.ctrlKey || ev.metaKey) {
         selected.has(id) ? selected.delete(id) : selected.add(id); renderLibrary();
@@ -515,6 +525,26 @@
     $("#postsel").textContent = selected.size ? `Post selected (${selected.size})` : "Post selected";
     $("#delsel").disabled = !selected.size;
     $("#delsel").textContent = selected.size ? `Delete selected (${selected.size})` : "Delete selected";
+  }
+  function renderSideNotes() {
+    const mine = x => !current || x.streamer === current;
+    const f = failed.filter(mine), o = otherLang.filter(mine);
+    let html = "";
+    if (f.length) html += `<div class="note" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+        <span style="flex:1">⚠️ ${f.length > 1 ? f.length + " clips" : "1 clip"} couldn't be turned into ${f.length > 1 ? "phone clips" : "a phone clip"}. The recordings are kept, so you can try again.
+        The Activity log on the Clipping tab says what went wrong.</span>
+        <button class="btn" id="retryfailed">Try again</button></div>`;
+    if (o.length) html += `<div class="note" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
+        <span style="flex:1">🌐 ${o.length} clip${o.length > 1 ? "s were" : " was"} set aside because the streamer spoke another language
+        (in each streamer's <i>Other languages</i> folder).</span>
+        <button class="btn" id="openother">Open folder</button></div>`;
+    $("#sidenotes").innerHTML = html;
+    if ($("#retryfailed")) $("#retryfailed").onclick = async () => {
+      const r = await api("/api/clips/retry", { clips: f.map(x => ({ streamer: x.streamer, name: x.name })) });
+      toast(`Trying again for ${r.retrying} clip${r.retrying === 1 ? "" : "s"}…`); loadClips();
+    };
+    if ($("#openother")) $("#openother").onclick = () =>
+      api("/api/open-folder", current ? { which: "streamer", name: current } : { which: "clips" });
   }
   function renderBin() {
     if (!binClips.length) {

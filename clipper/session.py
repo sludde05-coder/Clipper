@@ -136,7 +136,7 @@ class ChannelSession:
         with open(Path(c.output_dir) / "index.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({k: v for k, v in meta.items() if k not in ("chat_sample", "chat_timeline")},
                                ensure_ascii=False) + "\n")
-        log.info("🎬 clip saved: %s", out.name)
+        log.info("🎬 clip recorded: %s (making the phone clip, it shows up in Clips in a minute or two)", out.name)
         await finish_clip(out, details, self.cfg)
 
 

@@ -296,7 +296,51 @@ class ClipperApp:
             s = streamers.setdefault(c["streamer"], {"name": c["streamer"], "count": 0, "to_post": 0})
             s["count"] += 1
             s["to_post"] += not all(c["posted"].values()) if c["posted"] else 1
-        return web.json_response({"clips": clips, "streamers": sorted(streamers.values(), key=lambda s: s["name"].lower())})
+        return web.json_response({"clips": clips, "streamers": sorted(streamers.values(), key=lambda s: s["name"].lower()),
+                                  **self._side_lists()})
+
+    def _side_lists(self) -> dict:
+        """Clips that aren't in Phone clips (yet): being made, failed, or set aside for another language."""
+        making, failed, other = [], [], []
+        if self.clips_dir.exists():
+            for streamer in self.clips_dir.iterdir():
+                if not streamer.is_dir() or streamer.name == DELETED or streamer.name.startswith("."):
+                    continue
+                for folder, out in ((naming.WORK, making), (naming.NOT_CONVERTED, failed), (naming.OTHER_LANGUAGES, other)):
+                    for p in (streamer / folder).glob("*.mp4"):
+                        if p.name.endswith((".phone.mp4", ".rendering.mp4")):
+                            continue
+                        m = NAME_RE.match(p.stem)
+                        out.append({"streamer": streamer.name, "name": p.stem,
+                                    "date": m["date"] if m else "", "time": m["time"].replace("-", ":") if m else "",
+                                    "number": int(m["n"]) if m else 0})
+        return {"making": making, "failed": failed, "other_languages": other}
+
+    async def retry_failed(self, request):
+        """Try making the phone clips again for clips in Not converted."""
+        from .session import finish_clip
+        body = await request.json()
+        wanted = {(x.get("streamer"), x.get("name")) for x in body.get("clips", [])}
+        jobs = []
+        for item in self._side_lists()["failed"]:
+            if wanted and (item["streamer"], item["name"]) not in wanted:
+                continue
+            streamer = self.clips_dir / item["streamer"]
+            work = naming.move_into(streamer / naming.NOT_CONVERTED / f"{item['name']}.mp4", streamer / naming.WORK)
+            jobs.append(work)
+
+        async def run():
+            for work in jobs:
+                details = naming.details_path(work)
+                try:
+                    phone = await finish_clip(work, details, self.cfg)
+                    log.info("🔁 %s: %s", work.name, "phone clip made" if phone else "failed again")
+                except Exception as e:  # noqa: BLE001
+                    log.error("couldn't make %s: %s", work.name, e)
+
+        if jobs:
+            asyncio.create_task(run())
+        return web.json_response({"ok": True, "retrying": len(jobs)})
 
     async def clip_detail(self, request):
         clip = self._clip(request.query.get("id", ""))
@@ -694,7 +738,7 @@ class ClipperApp:
         try:
             n = await recover_unfinished(self.cfg)
             if n:
-                log.info("🩹 finished %d clip%s that were left unfinished", n, "" if n == 1 else "s")
+                log.info("🩹 finished %s left unfinished", "1 clip that was" if n == 1 else f"{n} clips that were")
         finally:
             self.jobs["__recovery__"] = {"state": "done", "error": ""}
 
@@ -714,6 +758,7 @@ class ClipperApp:
         r.add_post("/api/clip/render", self.rerender)
         r.add_get("/api/clip/job", self.job)
         r.add_post("/api/clip/delete", self.delete_clip)
+        r.add_post("/api/clips/retry", self.retry_failed)
         r.add_get("/api/deleted", self.deleted)
         r.add_post("/api/deleted/restore", self.restore)
         r.add_post("/api/deleted/purge", self.purge)
