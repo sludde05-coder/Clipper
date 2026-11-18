@@ -59,6 +59,7 @@ class PostConfig:
     autofill: bool = True           # Post fills in the upload page in Clipper's browser window
     autosubmit: bool = False        # ...and clicks Post / Publish / Share too (against the sites' rules: account risk)
     pause_between_clips: int = 120  # seconds between clips when posting by itself, so it doesn't look like a bot
+    pause_between_clips_max: int = 0  # ...up to this many: a random time in between each time (0 = always the above)
     tiktok_account: str = ""        # shown in the app, e.g. "@myclips"
     youtube_account: str = ""
     instagram_account: str = ""

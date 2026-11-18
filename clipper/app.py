@@ -209,6 +209,7 @@ class ClipperApp:
             "autofill": self.cfg.post.autofill,
             "autosubmit": self.cfg.post.autofill and self.cfg.post.autosubmit,
             "pause_between_clips": self.cfg.post.pause_between_clips,
+            "pause_between_clips_max": max(self.cfg.post.pause_between_clips, self.cfg.post.pause_between_clips_max),
         })
 
     async def logs_since(self, request):
@@ -800,7 +801,8 @@ class ClipperApp:
         posting = [{"key": k, "name": TARGETS[k].name, "enabled": k in p.platforms,
                     "account": getattr(p, f"{k}_account"), "tags": getattr(p, f"{k}_tags")} for k in TARGETS]
         return web.json_response({"fields": fields, "posting": posting, "credit": p.credit, "autofill": p.autofill,
-                                  "autosubmit": p.autosubmit, "pause_between_clips": p.pause_between_clips})
+                                  "autosubmit": p.autosubmit, "pause_between_clips": p.pause_between_clips,
+                                  "pause_between_clips_max": max(p.pause_between_clips, p.pause_between_clips_max)})
 
     @staticmethod
     def _default(cfg: Config, section: str, key: str):
@@ -815,7 +817,7 @@ class ClipperApp:
         path = Path(self.config_path)
         text = path.read_text(encoding="utf-8")
         allowed = {(s, k): kind for s, k, _l, kind, _h, _o in SETTINGS}
-        allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool", ("post", "autofill"): "bool", ("post", "autosubmit"): "bool", ("post", "pause_between_clips"): "number",
+        allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool", ("post", "autofill"): "bool", ("post", "autosubmit"): "bool", ("post", "pause_between_clips"): "number", ("post", "pause_between_clips_max"): "number",
                         **{("post", f"{k}_{f}"): "text" for k in TARGETS for f in ("account", "tags")}})
         for item in body.get("values", []):
             kind = allowed.get((item.get("section"), item.get("key")))

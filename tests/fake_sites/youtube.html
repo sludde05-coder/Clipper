@@ -10,6 +10,8 @@
   <button id="next-button">Next</button>
   <div id="vis" hidden><tp-yt-paper-radio-button name="PUBLIC" onclick="window.__vis='public'">Public</tp-yt-paper-radio-button>
     <button id="done-button" disabled>Publish</button></div>
+  <tp-yt-paper-dialog id="checks" hidden>Checks aren't complete yet. <button id="cancel">Cancel</button>
+    <button id="anyway">Publish anyway</button></tp-yt-paper-dialog>
   <ytcp-video-share-dialog id="published" hidden>Video published <button id="close-button">Close</button></ytcp-video-share-dialog>
 </div>
 <script>
@@ -17,6 +19,8 @@ window.__steps = 0;
 f.onchange = () => setTimeout(() => { details.hidden = false; document.querySelector('#title-textarea #textbox').textContent = 'file name'; window.__file = f.files[0].name; }, 600);
 document.getElementById('next-button').onclick = () => { window.__steps++; if (window.__steps >= 3) { vis.hidden = false; document.getElementById('next-button').setAttribute('disabled', '');
   setTimeout(() => document.getElementById('done-button').disabled = false, 1200); } };
-document.getElementById('done-button').onclick = () => { window.__posted = true; setTimeout(() => published.hidden = false, 800); };
+const publish = () => { window.__posted = true; setTimeout(() => published.hidden = false, 800); };
+document.getElementById('done-button').onclick = () => location.search.includes("checks") ? (checks.hidden = false) : publish();
+anyway.onclick = () => { checks.hidden = true; window.__anyway = true; publish(); };
 document.getElementById('close-button').onclick = () => { published.hidden = true; window.__closed = true; };
 </script>

@@ -39,6 +39,9 @@ POST_ITEM = re.compile(r"^\s*(Post|Inlägg)\s*$", re.I)
 EDIT_COVER = re.compile(r"^\s*(Edit cover|Redigera omslag|Ändra omslag)\s*$", re.I)
 UPLOAD_COVER = re.compile(r"^\s*(Upload cover|Ladda upp omslag)\s*$", re.I)
 CONFIRM_COVER = re.compile(r"^\s*(Confirm|Save|Done|Bekräfta|Spara|Klar)\s*$", re.I)
+# YouTube: "checks aren't complete yet" -> publish anyway.
+ANYWAY = re.compile(r"^\s*(Publish anyway|Post anyway|Publish now|Publicera ändå|Publicera i alla fall|"
+                    r"Publicera nu|Lägg upp ändå)\s*$", re.I)
 ORIGINAL = re.compile(r"^\s*Original\s*$", re.I)
 IG_CROP = ['svg[aria-label="Select crop"]', 'svg[aria-label="Select Crop"]', 'svg[aria-label="Välj beskärning"]',
            'svg[aria-label="Beskär"]']
@@ -428,6 +431,11 @@ class AutoPoster:
             raise FillError("the Publish button never became clickable: check YouTube Studio and publish by hand")
         await _say(status, "Publishing")
         await btn.click()
+        # If YouTube hasn't finished checking the video, it asks first; the answer is to publish anyway.
+        anyway = await _wait_enabled(page, [page.get_by_role("button", name=ANYWAY)], 10)
+        if anyway is not None:
+            await _say(status, "YouTube's checks aren't done yet: publishing anyway")
+            await anyway.click()
         await _say(status, "Waiting for YouTube to confirm")
         if await _wait_for_any(page, ["ytcp-video-share-dialog", "ytcp-uploads-still-processing-dialog",
                                       re.compile(r"(video published|video processing|still processing)", re.I)]):

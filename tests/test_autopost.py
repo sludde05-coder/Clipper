@@ -276,3 +276,16 @@ def test_instagram_is_not_shared_cut_to_a_square(site, monkeypatch):
             await ap.fill("instagram", video, {"caption": "x"}, lambda s: None, submit=True)
         return await ap._pages["instagram"].evaluate("window.__posted")
     assert run(tmp, fn) is None
+
+
+def test_youtube_publishes_anyway_when_checks_are_not_done(site, monkeypatch):
+    video, tmp = site
+    monkeypatch.setitem(autopost.UPLOAD_URL, "youtube", autopost.UPLOAD_URL["youtube"] + "?checks=1")
+    steps = []
+
+    async def fn(ap):
+        msg = await ap.fill("youtube", video, {"title": "t #shorts", "description": "d"}, steps.append, submit=True)
+        return msg, await ap._pages["youtube"].evaluate("[window.__anyway, window.__posted]")
+    msg, (anyway, posted) = run(tmp, fn)
+    assert msg == "Published on YouTube" and anyway is True and posted is True
+    assert any("anyway" in s for s in steps)

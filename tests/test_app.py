@@ -158,11 +158,15 @@ def test_settings_roundtrip(tmp_path):
             {"section": "detector", "key": "multiplier", "value": "2.5"},
             {"section": "vertical", "key": "ai_model", "value": "claude-haiku-5-5"},
             {"section": "post", "key": "tiktok_tags", "value": "#gaming"},
+            {"section": "post", "key": "pause_between_clips", "value": "480"},
+            {"section": "post", "key": "pause_between_clips_max", "value": "600"},
             {"section": "nope", "key": "x", "value": "ignored"}]})
         assert r.status == 200
         f = {(x["section"], x["key"]): x["value"] for x in (await (await c.get("/api/settings")).json())["fields"]}
         assert f[("discovery", "platforms")] == ["twitch"] and f[("detector", "multiplier")] == 2.5
         assert app.cfg.post.tiktok_tags == "#gaming" and app.cfg.discovery.languages == []
+        posting = await (await c.get("/api/settings")).json()
+        assert (posting["pause_between_clips"], posting["pause_between_clips_max"]) == (480, 600)
     run(conf, fn)
     assert "nope" not in conf.read_text()
 

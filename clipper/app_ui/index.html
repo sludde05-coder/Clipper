@@ -332,9 +332,12 @@
             Needs "Fill in the upload page for me" on.</div></div>
           <label class="switch"><input type="checkbox" id="autosubmit"><i></i></label>
         </div>
-        <label class="field" style="margin-top:12px;max-width:340px"><span>Minutes between clips</span>
-          <input type="number" id="pausemins" min="0" step="0.5"><div class="help">Posting many clips back-to-back looks
-          like a bot. 2 minutes or more is safer.</div></label>
+        <div class="field" style="margin-top:12px;max-width:420px"><span>Minutes between clips</span>
+          <div class="row" style="gap:8px;align-items:center">
+            <input type="number" id="pausemins" min="0" step="0.5" style="width:90px"> to
+            <input type="number" id="pausemax" min="0" step="0.5" style="width:90px"> minutes</div>
+          <div class="help">Each wait is a random time in this range (e.g. 8 to 10), so posts don't come at a fixed
+          rhythm. Posting many clips back-to-back looks like a bot.</div></div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="row" style="justify-content:space-between">
@@ -783,7 +786,7 @@
     if (state.autosubmit) {
       const names = state.platforms.map(p => p.name).join(", ");
       if (!confirm(`Clipper will post ${items.length} clip${items.length > 1 ? "s" : ""} to ${names} by itself, ` +
-                   `${Math.round(state.pause_between_clips / 60 * 10) / 10} min apart. You can stop with Close. Start?`)) return;
+                   `${pauseText()} apart. You can stop with Close. Start?`)) return;
     }
     flow = { items, ci: 0, pi: 0, posted: {} };
     $("#flow").hidden = false;
@@ -896,8 +899,17 @@
     await api("/api/clip/finish", { id: flow.items[flow.ci].id }).catch(() => {});
     flow.ci++; flow.pi = 0;
     if (flow.ci >= flow.items.length) return endFlow(true);
-    if (state.autosubmit && state.pause_between_clips > 0) await pause(state.pause_between_clips);
+    if (state.autosubmit && pauseMax() > 0) await pause(randomPause());
     if (flow) enterStep(true);
+  }
+  function pauseMax() { return Math.max(state.pause_between_clips, state.pause_between_clips_max || 0); }
+  function randomPause() {   // a different wait each time, anywhere in the chosen range
+    const lo = state.pause_between_clips, hi = pauseMax();
+    return Math.round(lo + Math.random() * (hi - lo));
+  }
+  function pauseText() {
+    const m = s => Math.round(s / 60 * 10) / 10;
+    return m(pauseMax()) > m(state.pause_between_clips) ? `${m(state.pause_between_clips)}–${m(pauseMax())} min` : `${m(pauseMax())} min`;
   }
   function pause(seconds) {
     // Space posts out, so the sites don't see a burst of uploads (that looks like a bot).
@@ -933,6 +945,7 @@
     $("#autofill").checked = postingData.autofill;
     $("#autosubmit").checked = postingData.autosubmit;
     $("#pausemins").value = Math.round(postingData.pause_between_clips / 60 * 10) / 10;
+    $("#pausemax").value = Math.round(postingData.pause_between_clips_max / 60 * 10) / 10;
     $("#platforms").innerHTML = postingData.posting.map(p => `<div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <h2 style="margin:0;display:flex;align-items:center;gap:8px"><span class="pdot" style="background:${PCOLORS[p.key]}"></span>${esc(p.name)}</h2>
@@ -949,12 +962,18 @@
       toast(r.where === "clipper" ? "Sign in in the Chrome window that opened, then close it. Clipper remembers you." : "Opened in your browser", 5000);
     });
   }
+  function pauseValues() {
+    const lo = Math.max(0, parseFloat($("#pausemins").value) || 0);
+    const hi = Math.max(lo, parseFloat($("#pausemax").value) || 0);   // "to" can't be below "from"
+    return [{ section: "post", key: "pause_between_clips", value: String(Math.round(lo * 60)) },
+            { section: "post", key: "pause_between_clips_max", value: String(Math.round(hi * 60)) }];
+  }
   $("#saveposting").onclick = async () => {
     const values = [{ section: "post", key: "platforms", value: $$("[data-en]").filter(i => i.checked).map(i => i.dataset.en) },
                     { section: "post", key: "credit", value: $("#credit").checked },
                     { section: "post", key: "autofill", value: $("#autofill").checked },
                     { section: "post", key: "autosubmit", value: $("#autosubmit").checked },
-                    { section: "post", key: "pause_between_clips", value: String(Math.round((parseFloat($("#pausemins").value) || 0) * 60)) }];
+                    ...pauseValues()];
     $$("[data-acc]").forEach(i => values.push({ section: "post", key: i.dataset.acc + "_account", value: i.value }));
     $$("[data-tags]").forEach(i => values.push({ section: "post", key: i.dataset.tags + "_tags", value: i.value }));
     await api("/api/settings", { values }); toast("Saved ✓"); refreshState();
