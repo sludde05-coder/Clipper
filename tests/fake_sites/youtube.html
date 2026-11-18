@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>fake YouTube Studio upload</title>
+<!-- Stand-in for YouTube Studio's upload dialog: file input; then title/description boxes,
+     the "made for kids" choice, three Next steps and the visibility choice. -->
+<input type="file" id="f" style="display:none">
+<div id="details" hidden>
+  <div id="title-textarea"><div id="textbox" contenteditable="true"></div></div>
+  <div id="description-textarea"><div id="textbox" contenteditable="true"></div></div>
+  <tp-yt-paper-radio-button name="VIDEO_MADE_FOR_KIDS_MFK" onclick="window.__kids='yes'">Yes</tp-yt-paper-radio-button>
+  <tp-yt-paper-radio-button name="VIDEO_MADE_FOR_KIDS_NOT_MFK" onclick="window.__kids='no'">No</tp-yt-paper-radio-button>
+  <button id="next-button">Next</button>
+  <div id="vis" hidden><tp-yt-paper-radio-button name="PUBLIC" onclick="window.__vis='public'">Public</tp-yt-paper-radio-button>
+    <button id="done-button">Publish</button></div>
+</div>
+<script>
+window.__steps = 0;
+f.onchange = () => setTimeout(() => { details.hidden = false; document.querySelector('#title-textarea #textbox').textContent = 'file name'; window.__file = f.files[0].name; }, 600);
+document.getElementById('next-button').onclick = () => { window.__steps++; if (window.__steps >= 3) { vis.hidden = false; document.getElementById('next-button').setAttribute('disabled', ''); } };
+</script>

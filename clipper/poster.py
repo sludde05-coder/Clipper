@@ -102,7 +102,9 @@ def build_captions(meta: dict, clip: Path, credit: bool = True) -> dict[str, dic
         return " ".join(out)
 
     title = (hook or line)
-    yt_title = (title[: 100 - len(" #shorts")].rstrip() + " #shorts") if title else "#shorts"
+    # Shorts show the title as the caption, so the credit goes there too: "<hook> | <Streamer> #shorts".
+    tail = (f" | {name}" if credit and name else "") + " #shorts"
+    yt_title = (title[: 100 - len(tail)].rstrip() + tail) if title else tail.strip()
     return {
         "tiktok": {"caption": "\n".join(x for x in (line, credit_line, with_tags(["#fyp"])) if x)},
         "youtube": {

@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>fake Instagram</title>
+<!-- Stand-in for Instagram's web "Create" flow: Create -> Post -> file input in a dialog ->
+     "now shared as reels" OK -> Next (crop) -> Next (edit) -> caption box. -->
+<a href="#" id="create"><svg aria-label="New post" width="24" height="24"><rect width="24" height="24"/></svg></a>
+<div id="menu" hidden><a href="#" id="postitem"><svg aria-label="Post" width="20" height="20"><circle cx="10" cy="10" r="9"/></svg></a></div>
+<div role="dialog" id="dlg" hidden>
+  <input type="file" id="f" style="display:none">
+  <div id="reels" hidden>Video posts are now shared as reels <button id="ok">OK</button></div>
+  <div role="button" id="next" hidden tabindex="0">Next</div>
+  <div id="capwrap" hidden><div aria-label="Write a caption..." contenteditable="true" id="cap"></div><div role="button">Share</div></div>
+</div>
+<script>
+let stage = 0;
+create.onclick = e => { e.preventDefault(); menu.hidden = false; };
+postitem.onclick = e => { e.preventDefault(); menu.hidden = true; dlg.hidden = false; };
+f.onchange = () => { window.__file = f.files[0].name; reels.hidden = false; };
+ok.onclick = () => { reels.hidden = true; next.hidden = false; };
+next.onclick = () => { stage++; window.__nexts = stage; if (stage >= 2) { next.hidden = true; capwrap.hidden = false; } };
+</script>

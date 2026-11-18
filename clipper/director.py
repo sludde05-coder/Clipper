@@ -253,7 +253,7 @@ async def _ask(model: str, messages: list[dict]) -> dict | None:
     import anthropic
 
     try:
-        client = anthropic.AsyncAnthropic()
+        client = anthropic.AsyncAnthropic(timeout=180, max_retries=2)
         # If the model declines, the API retries on a fallback model. Haiku has no
         # server-side fallback, so the option is only sent where it exists.
         fallback = ({"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}

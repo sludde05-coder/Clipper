@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>fake TikTok upload</title>
+<!-- Stand-in for TikTok Studio's upload page: a hidden file input, and a rich-text caption box
+     (pre-filled with the file name) that only appears once a video is chosen. -->
+<input type="file" accept="video/*" style="display:none" id="f">
+<div id="after" hidden>
+  <div data-e2e="caption_container"><div class="public-DraftEditor-content" contenteditable="true" id="cap"></div></div>
+  <button>Post</button>
+</div>
+<script>
+f.onchange = () => setTimeout(() => { after.hidden = false; cap.textContent = f.files[0].name; window.__file = f.files[0].name; }, 600);
+</script>

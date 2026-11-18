@@ -14,7 +14,7 @@ def test_captions_per_platform():
     assert tt.startswith("Kai really pulled this off on day one 😭")
     assert "🎥 KaiCenat on Twitch" in tt
     assert "#gta6" in tt and "#fyp" in tt and "#twitch" in tt
-    assert c["youtube"]["title"] == "Kai jumped the bridge in a cop car #shorts"
+    assert c["youtube"]["title"] == "Kai jumped the bridge in a cop car | KaiCenat #shorts"
     assert "https://www.twitch.tv/kaicenat" in c["youtube"]["description"]
     assert "#shorts" in c["youtube"]["description"]
     assert "#reels" in c["instagram"]["caption"]
@@ -82,7 +82,7 @@ def test_full_walkthrough(tmp_path):
     assert results == {"tiktok": "posted", "youtube": "posted", "instagram": "skipped"}
     assert opened == ["https://www.tiktok.com/tiktokstudio/upload", "https://www.youtube.com/upload"]
     assert copied[0].startswith("Kai really pulled") and "#fyp" in copied[0]
-    assert copied[1] == "Kai jumped the bridge in a cop car #shorts"
+    assert copied[1] == "Kai jumped the bridge in a cop car | KaiCenat #shorts"
     assert "#shorts" in copied[2]
     assert shown == [clip]
     done = post / "posted"

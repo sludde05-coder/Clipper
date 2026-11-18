@@ -31,7 +31,7 @@ from urllib.parse import quote
 import aiohttp
 from aiohttp import web
 
-from . import naming
+from . import naming, progress
 from .config import Config, load_config
 from .director import MOODS, Beat, Plan
 from .models import parse_target
@@ -118,6 +118,7 @@ class ClipperApp:
         self.phone = None
         self.quit_event = asyncio.Event()
         self.needs_restart = False
+        self._autoposter = None
 
     # ------------------------------------------------------------ paths
 
@@ -195,6 +196,7 @@ class ClipperApp:
             "phone_url": self.phone.phone_url if self.phone else "", "needs_restart": self.needs_restart and running,
             "jobs": {k: v["state"] for k, v in self.jobs.items() if v["state"] == "running"},
             "platforms": [{"key": k, "name": TARGETS[k].name} for k in self._platforms()],
+            "autofill": self.cfg.post.autofill,
         })
 
     async def logs_since(self, request):
@@ -311,7 +313,9 @@ class ClipperApp:
                         if p.name.endswith((".phone.mp4", ".rendering.mp4")):
                             continue
                         m = NAME_RE.match(p.stem)
+                        now = progress.get(p.name) if folder == naming.WORK else None
                         out.append({"streamer": streamer.name, "name": p.stem,
+                                    "step": now[0] if now else "", "minutes": int((time.time() - now[1]) // 60) if now else 0,
                                     "date": m["date"] if m else "", "time": m["time"].replace("-", ":") if m else "",
                                     "number": int(m["n"]) if m else 0})
         return {"making": making, "failed": failed, "other_languages": other}
@@ -584,8 +588,63 @@ class ClipperApp:
         url = SIGN_IN.get(key) if body.get("signin") else (TARGETS[key].url if key in TARGETS else None)
         if not url:
             raise web.HTTPBadRequest(text="unknown platform")
+        if body.get("signin") and self.cfg.post.autofill:
+            # Sign in inside Clipper's browser window, where auto-fill happens.
+            try:
+                await self.autoposter().open_sign_in(key)
+                return web.json_response({"ok": True, "where": "clipper"})
+            except Exception as e:  # noqa: BLE001
+                log.warning("couldn't open Clipper's browser (%s), using your normal browser", e)
         webbrowser.open(url)
-        return web.json_response({"ok": True})
+        return web.json_response({"ok": True, "where": "browser"})
+
+    # ------------------------------------------------------------ auto-fill
+
+    def autoposter(self):
+        if self._autoposter is None:
+            from .autopost import AutoPoster
+            self._autoposter = AutoPoster(Path(self.config_path).resolve().parent / "browser-profile")
+        return self._autoposter
+
+    async def autofill(self, request):
+        """Fill in one platform's upload page for a clip, in Clipper's browser window."""
+        body = await request.json()
+        clip = self._clip(body.get("id", ""))
+        platform = body.get("platform")
+        if platform not in TARGETS:
+            raise web.HTTPBadRequest(text="unknown platform")
+        key = f"fill|{self._id(clip)}|{platform}"
+        caps = captions_for(self._meta(clip), clip, self.cfg.post)[platform]
+        # Use what's in the walkthrough's boxes right now, in case you just edited it there.
+        caps.update({k: str(v) for k, v in (body.get("captions") or {}).items() if k in caps and str(v).strip()})
+        self.jobs[key] = {"state": "running", "error": "", "message": "Starting"}
+
+        def status(text: str) -> None:
+            self.jobs[key]["message"] = text
+
+        async def run():
+            from .autopost import FillError, NeedsSignIn
+            try:
+                left = await self.autoposter().fill(platform, clip, caps, status)
+                self.jobs[key] = {"state": "done", "error": "", "message": left}
+                log.info("📝 %s filled in on %s", clip.name, TARGETS[platform].name)
+            except NeedsSignIn:
+                name = TARGETS[platform].name.split()[0]
+                self.jobs[key] = {"state": "signin", "error": "",
+                                  "message": f"Sign in to {name} in Clipper's browser window, then press Fill in again"}
+            except FillError as e:
+                self.jobs[key] = {"state": "error", "error": str(e), "message": ""}
+                log.warning("auto-fill on %s: %s", TARGETS[platform].name, e)
+            except Exception as e:  # noqa: BLE001
+                self.jobs[key] = {"state": "error", "error": f"something went wrong ({type(e).__name__}: {e})",
+                                  "message": ""}
+                log.warning("auto-fill on %s failed: %s", TARGETS[platform].name, e, exc_info=True)
+
+        asyncio.create_task(run())
+        return web.json_response({"ok": True, "key": key})
+
+    async def autofill_job(self, request):
+        return web.json_response(self.jobs.get(request.query.get("key", ""), {"state": "none", "error": "", "message": ""}))
 
     async def reveal(self, request):
         body = await request.json()
@@ -661,7 +720,7 @@ class ClipperApp:
         p = self.cfg.post
         posting = [{"key": k, "name": TARGETS[k].name, "enabled": k in p.platforms,
                     "account": getattr(p, f"{k}_account"), "tags": getattr(p, f"{k}_tags")} for k in TARGETS]
-        return web.json_response({"fields": fields, "posting": posting, "credit": p.credit})
+        return web.json_response({"fields": fields, "posting": posting, "credit": p.credit, "autofill": p.autofill})
 
     @staticmethod
     def _default(cfg: Config, section: str, key: str):
@@ -676,7 +735,7 @@ class ClipperApp:
         path = Path(self.config_path)
         text = path.read_text(encoding="utf-8")
         allowed = {(s, k): kind for s, k, _l, kind, _h, _o in SETTINGS}
-        allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool",
+        allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool", ("post", "autofill"): "bool",
                         **{("post", f"{k}_{f}"): "text" for k in TARGETS for f in ("account", "tags")}})
         for item in body.get("values", []):
             kind = allowed.get((item.get("section"), item.get("key")))
@@ -731,6 +790,12 @@ class ClipperApp:
 
     # ------------------------------------------------------------ app
 
+    async def finish_stuck(self, request):
+        """The "Finish now" button: finish clips waiting in .work that nothing is working on."""
+        if self.jobs.get("__recovery__", {}).get("state") != "running":
+            asyncio.create_task(self._recover())
+        return web.json_response({"ok": True})
+
     async def _recover(self) -> None:
         """Finish clips left halfway last time (shown as a rendering job while it runs)."""
         from .session import recover_unfinished
@@ -759,6 +824,7 @@ class ClipperApp:
         r.add_get("/api/clip/job", self.job)
         r.add_post("/api/clip/delete", self.delete_clip)
         r.add_post("/api/clips/retry", self.retry_failed)
+        r.add_post("/api/clips/finish-stuck", self.finish_stuck)
         r.add_get("/api/deleted", self.deleted)
         r.add_post("/api/deleted/restore", self.restore)
         r.add_post("/api/deleted/purge", self.purge)
@@ -767,6 +833,8 @@ class ClipperApp:
         r.add_post("/api/clip/reveal", self.reveal)
         r.add_post("/api/clip/to-phone", self.to_phone)
         r.add_post("/api/open-upload", self.open_upload)
+        r.add_post("/api/autofill", self.autofill)
+        r.add_get("/api/autofill/job", self.autofill_job)
         r.add_post("/api/open-folder", self.open_folder)
         r.add_get("/api/settings", self.settings)
         r.add_post("/api/settings", self.save_settings)
@@ -808,6 +876,8 @@ class ClipperApp:
                     break
         finally:
             await self.stop_clipping()
+            if self._autoposter is not None:
+                await self._autoposter.close()
             if self.phone:
                 await self.phone.stop()
             await runner.cleanup()

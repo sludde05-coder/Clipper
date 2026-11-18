@@ -59,12 +59,23 @@ To make re-rendering possible, each clip's caption-free original is kept out of 
 
 ### Posting
 
-1. In **Posting**, turn on the platforms you use, and click **Open … to sign in** for each one, so your browser
-   is signed in.
-2. In **Clips**, tick the clips you want to post (the little box on each clip), and press **Post selected**.
-3. For each clip and each platform, Clipper opens the upload page, shows the clip file to drag in, and **copies the
-   caption** for you. Paste it (Ctrl+V), post it on the site, then press **✓ Posted, next** (or **Skip**).
-4. Posted clips get a ✓ per platform and move from **To post** to **Posted**.
+1. In **Posting**, turn on the platforms you use and click **Open … to sign in** for each one. This opens
+   **Clipper's own browser window**, a separate Edge window with its own profile. Sign in there once; it remembers you.
+2. In **Clips**, tick the clips you want to post and press **Post selected**.
+3. For each clip and platform, Clipper **puts the video and caption into the upload page** in its browser window.
+   On YouTube it also picks "not made for kids", goes through the Next steps and chooses Public.
+4. Check it there and click **Post** (TikTok) / **Publish** (YouTube) / **Share** (Instagram), then come back to Clipper
+   and press **✓ Posted, next**.
+5. Posted clips get a ✓ per platform and move from **To post** to **Posted**.
+
+YouTube titles credit the streamer: `<headline> | <Streamer> #shorts`.
+
+**If a step can't be filled in** (the site changed its page, or wants you to sign in), Clipper says so and you do that
+step by hand: the caption is already copied (Ctrl+V) and the clip file is shown in a folder window to drag in.
+
+**About the account risk:** the sites can see that Clipper's window is an automated browser. If one starts asking for
+extra checks or blocks uploads, turn off **Fill in the upload page for me** in Posting. Then Post opens the page in your
+normal browser, shows the file and copies the caption, and you drag and paste yourself.
 
 ### Deleting clips
 

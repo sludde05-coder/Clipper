@@ -19,6 +19,7 @@ from .config import VerticalConfig
 from .director import Plan, claude_plan, rule_plan
 from .transcribe import Transcript, transcribe
 from .proc import NO_WINDOW
+from . import progress
 
 log = logging.getLogger(__name__)
 _slots: asyncio.Semaphore | None = None
@@ -76,6 +77,25 @@ def remember_hook(folder: Path, hook: str) -> None:
         pass
 
 
+ENCODE_TIMEOUT = 15 * 60       # a 30 s clip takes under a minute; anything near this is stuck
+SPEECH_TIMEOUT = 20 * 60       # includes the one-time ~500 MB model download
+_speech_gave_up = False        # after a speech-to-text timeout, skip it for the rest of the session
+
+
+async def _transcribe_with_limit(clip: Path, model: str) -> Transcript:
+    """Speech-to-text, but never wait forever: a slow PC or a stuck download skips word captions."""
+    global _speech_gave_up
+    if _speech_gave_up:
+        return Transcript([])
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(transcribe, clip, model), SPEECH_TIMEOUT)
+    except asyncio.TimeoutError:
+        _speech_gave_up = True
+        log.warning("speech-to-text took over %d minutes, so clips get no word-by-word captions until Clipper "
+                    "restarts. Run the Check tab, or set the speech model to 'base' in Settings.", SPEECH_TIMEOUT // 60)
+        return Transcript([])
+
+
 async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x: float,
                   safe: bool) -> tuple[bool, str]:
     audio = ["-af", "asetpts=N/SR/TB"] if safe else []
@@ -87,7 +107,12 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         "-c:v", "libx264", "-preset", cfg.preset, "-crf", str(cfg.crf), "-pix_fmt", "yuv420p",
         "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out.resolve()),
         cwd=tmp, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
-    _, err = await proc.communicate()
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), ENCODE_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return False, f"rendering took over {ENCODE_TIMEOUT // 60} minutes and was stopped"
     return proc.returncode == 0, err.decode(errors="replace").strip()
 
 
@@ -106,7 +131,16 @@ def set_aside(clip: Path, meta_path: Path | None = None, dest: Path | None = Non
     return dest
 
 
-async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
+async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None, **kw) -> Path | None:
+    """Make the phone version of a clip (see _render_vertical). Its "current step" is always
+    cleared afterwards, so the app never shows a finished or failed clip as still in progress."""
+    try:
+        return await _render_vertical(clip, cfg, out, **kw)
+    finally:
+        progress.done(clip.name)
+
+
+async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
                           languages: list[str] | None = None, recent_dir: Path | None = None,
                           meta_path: Path | None = None, aside_dir: Path | None = None,
                           plan: Plan | None = None, words: list | None = None) -> Path | None:
@@ -126,13 +160,15 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
         if edited:
             words = words or []
         else:
-            tr = await asyncio.to_thread(transcribe, clip, cfg.whisper_model) if cfg.speech_captions else Transcript([])
+            progress.step(clip.name, "Listening to what the streamer says")
+            tr = await _transcribe_with_limit(clip, cfg.whisper_model) if cfg.speech_captions else Transcript([])
             words = tr.words
             if wrong_language(tr, languages):
                 moved = set_aside(clip, meta_path, aside_dir)
                 log.info("🌐 %s is in %s, not %s: moved to %s", clip.name, tr.language, "/".join(languages or []), moved)
                 return None
             if cfg.ai_captions:
+                progress.step(clip.name, "Writing the captions")
                 plan = await claude_plan(clip, meta, words, length, cfg.ai_model,
                                          recent=load_recent(recent_dir or clip.parent))
             plan = plan or rule_plan(meta, words)
@@ -142,6 +178,7 @@ async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = No
 
         out = out or clip.with_name(clip.stem + "_vertical.mp4")
         out.parent.mkdir(parents=True, exist_ok=True)
+        progress.step(clip.name, "Rendering the video")
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "captions.ass").write_text(
                 build_ass(plan, words, length, cfg.layout, cfg.font), encoding="utf-8")

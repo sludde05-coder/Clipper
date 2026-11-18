@@ -55,8 +55,11 @@ def transcribe(path: Path, model_size: str = "small") -> Transcript:
     with _lock:  # one model per size, shared, and whisper isn't thread-safe
         try:
             if model_size not in _models:
+                from . import progress
+                progress.step(path.name, "Getting the speech-to-text model ready (first time downloads ~500 MB)")
                 log.info("loading whisper model %r (first time downloads it)", model_size)
                 _models[model_size] = WhisperModel(model_size, device="auto", compute_type="int8")
+                progress.step(path.name, "Listening to what the streamer says")
             audio = load_audio(path)
             if audio.size < SAMPLE_RATE // 2:
                 return Transcript([])  # no sound track (or under half a second)

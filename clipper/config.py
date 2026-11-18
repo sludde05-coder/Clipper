@@ -52,6 +52,7 @@ class PostConfig:
     folder: str = "POST"            # drop clips here to post them
     platforms: list[str] = field(default_factory=lambda: ["tiktok", "youtube", "instagram"])
     credit: bool = True             # name the streamer and platform in every caption
+    autofill: bool = True           # Post fills in the upload page in Clipper's browser window
     tiktok_account: str = ""        # shown in the app, e.g. "@myclips"
     youtube_account: str = ""
     instagram_account: str = ""

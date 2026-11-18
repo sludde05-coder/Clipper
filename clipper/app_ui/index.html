@@ -303,9 +303,18 @@
     <!-- ===================== POSTING ===================== -->
     <section class="page" id="page-posting" hidden>
       <h1>Posting</h1>
-      <p class="sub">Link the platforms you post to. When you press Post, Clipper goes through each one: it opens the upload page,
-        shows you the file to drag in and has the caption ready to paste. Make sure you're signed in to each site in your browser.</p>
+      <p class="sub">Link the platforms you post to. When you press Post, Clipper goes through each one and fills in the upload
+        page for you in its own browser window, so you only check it and click Post. Sign in to each site there once
+        with the buttons below.</p>
       <div id="platforms" class="grid2"></div>
+      <div class="card" style="margin-top:16px">
+        <div class="row" style="justify-content:space-between">
+          <div><b>Fill in the upload page for me</b><div class="help">Clipper puts the video and caption in, in its own browser
+            window, and you click Post. The sites can see it's an automated browser, so if one starts asking for extra
+            checks, turn this off: then Clipper opens the page, shows the file and copies the caption instead.</div></div>
+          <label class="switch"><input type="checkbox" id="autofill"><i></i></label>
+        </div>
+      </div>
       <div class="card" style="margin-top:16px">
         <div class="row" style="justify-content:space-between">
           <div><b>Credit the streamer</b><div class="help">Adds "🎥 Name on Twitch" to every caption.</div></div>
@@ -349,6 +358,7 @@
       <h1 id="fl-title"></h1>
       <div class="progress" id="fl-progress"></div>
       <ol class="steps" id="fl-steps"></ol>
+      <div class="note" id="fl-status" hidden></div>
       <div id="fl-fields"></div>
       <div class="row">
         <button class="btn" id="fl-open">Open upload page again</button>
@@ -746,11 +756,51 @@
       : `<label class="field"><span>Caption <button class="btn ghost" data-copy="caption">Copy</button></span><textarea data-f="caption" rows="5">${esc(c.caption)}</textarea></label>`;
     $$("#fl-fields [data-copy]").forEach(b => b.onclick = async (e) => { e.preventDefault();
       const ok = await copy($(`#fl-fields [data-f="${b.dataset.copy}"]`).value); toast(ok ? "Copied: paste it with Ctrl+V" : "Couldn't copy"); });
-    // Do the busywork right away: copy the text, open the page, show the file.
+    // Do the busywork right away. The text is copied either way, as a backup.
     const first = p.key === "youtube" ? c.title : c.caption;
-    copy(first).then(ok => ok && toast(`${p.key === "youtube" ? "Title" : "Caption"} copied. Paste it with Ctrl+V`, 3500));
-    api("/api/open-upload", { platform: p.key });
-    if (firstOfClip) api("/api/clip/reveal", { id: item.id });
+    copy(first);
+    $("#fl-open").textContent = state.autofill ? "Fill in again" : "Open upload page again";
+    if (state.autofill) {
+      $("#fl-steps").innerHTML = [`Clipper puts the video and ${p.key === "youtube" ? "title and description" : "caption"} in, in its own browser window`,
+        "Check it there and click " + ({ tiktok: "Post", youtube: "Publish", instagram: "Share" })[p.key],
+        "Come back here and press ✓ Posted, next"].map(s => `<li>${esc(s)}</li>`).join("");
+      startFill(item, p);
+    } else {
+      $("#fl-status").hidden = true;
+      toast(`${p.key === "youtube" ? "Title" : "Caption"} copied. Paste it with Ctrl+V`, 3500);
+      api("/api/open-upload", { platform: p.key });
+      if (firstOfClip) api("/api/clip/reveal", { id: item.id });
+    }
+  }
+  function fieldValues() { const v = {}; $$("#fl-fields [data-f]").forEach(el => v[el.dataset.f] = el.value); return v; }
+  async function startFill(item, p) {
+    const box = $("#fl-status"); box.hidden = false;
+    box.innerHTML = `<span class="spin"></span> Getting Clipper's browser window ready…`;
+    const token = (flow.fillToken = (flow.fillToken || 0) + 1);
+    let r;
+    try { r = await api("/api/autofill", { id: item.id, platform: p.key, captions: fieldValues() }); }
+    catch (e) { return fillFailed(item, p, e.message); }
+    for (;;) {
+      await new Promise(res => setTimeout(res, 900));
+      if (!flow || flow.fillToken !== token) return;            // moved on to another step
+      const j = await api("/api/autofill/job?key=" + encodeURIComponent(r.key)).catch(() => ({ state: "running", message: "" }));
+      if (j.state === "running") { box.innerHTML = `<span class="spin"></span> ${esc(j.message || "Working")}…`; continue; }
+      if (j.state === "done") {
+        box.innerHTML = `✅ <b>Filled in.</b> ${esc(j.message)} in Clipper's browser window, then come back and press <b>✓ Posted, next</b>.`;
+        return;
+      }
+      if (j.state === "signin") {
+        box.innerHTML = `🔑 ${esc(j.message)}. You only have to do this once.`;
+        return;
+      }
+      return fillFailed(item, p, j.error);
+    }
+  }
+  function fillFailed(item, p, why) {
+    $("#fl-status").hidden = false;
+    $("#fl-status").innerHTML = `⚠️ Couldn't fill it in: ${esc(why)}.<br>Do this step by hand: the ${p.key === "youtube" ? "title" : "caption"}
+      is copied (Ctrl+V), and the clip file is shown in a folder window to drag in.`;
+    api("/api/clip/reveal", { id: item.id });
   }
   async function saveFlowEdits() {
     const item = flow.items[flow.ci], p = stepPlatforms(item)[flow.pi];
@@ -768,7 +818,10 @@
     enterStep(false);  // the list of platforms left just got shorter, so the same index is the next one
   };
   $("#fl-skip").onclick = async () => { await saveFlowEdits(); flow.pi++; enterStep(false); };
-  $("#fl-open").onclick = () => { const item = flow.items[flow.ci]; api("/api/open-upload", { platform: stepPlatforms(item)[flow.pi].key }); };
+  $("#fl-open").onclick = () => {
+    const item = flow.items[flow.ci], p = stepPlatforms(item)[flow.pi];
+    if (state.autofill) startFill(item, p); else api("/api/open-upload", { platform: p.key });
+  };
   $("#fl-reveal").onclick = () => api("/api/clip/reveal", { id: flow.items[flow.ci].id });
   async function nextClip() {
     await api("/api/clip/finish", { id: flow.items[flow.ci].id }).catch(() => {});
@@ -789,6 +842,7 @@
   async function loadPosting() {
     postingData = await api("/api/settings");
     $("#credit").checked = postingData.credit;
+    $("#autofill").checked = postingData.autofill;
     $("#platforms").innerHTML = postingData.posting.map(p => `<div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <h2 style="margin:0;display:flex;align-items:center;gap:8px"><span class="pdot" style="background:${PCOLORS[p.key]}"></span>${esc(p.name)}</h2>
@@ -796,11 +850,15 @@
       <label class="field"><span>Your account</span><input type="text" data-acc="${p.key}" value="${esc(p.account)}" placeholder="@yourname"></label>
       <label class="field"><span>Extra hashtags</span><input type="text" data-tags="${p.key}" value="${esc(p.tags)}" placeholder="#gta6 #gaming"><div class="help">Added to every ${esc(p.name)} caption.</div></label>
       <button class="btn" data-signin="${p.key}">Open ${esc(p.name.split(" ")[0])} to sign in</button></div>`).join("");
-    $$("[data-signin]").forEach(b => b.onclick = () => api("/api/open-upload", { platform: b.dataset.signin, signin: true }));
+    $$("[data-signin]").forEach(b => b.onclick = async () => {
+      const r = await api("/api/open-upload", { platform: b.dataset.signin, signin: true }).catch(e => ({ error: e.message }));
+      toast(r.where === "clipper" ? "Sign in in Clipper's browser window. It remembers you." : "Opened in your browser");
+    });
   }
   $("#saveposting").onclick = async () => {
     const values = [{ section: "post", key: "platforms", value: $$("[data-en]").filter(i => i.checked).map(i => i.dataset.en) },
-                    { section: "post", key: "credit", value: $("#credit").checked }];
+                    { section: "post", key: "credit", value: $("#credit").checked },
+                    { section: "post", key: "autofill", value: $("#autofill").checked }];
     $$("[data-acc]").forEach(i => values.push({ section: "post", key: i.dataset.acc + "_account", value: i.value }));
     $$("[data-tags]").forEach(i => values.push({ section: "post", key: i.dataset.tags + "_tags", value: i.value }));
     await api("/api/settings", { values }); toast("Saved ✓"); refreshState();

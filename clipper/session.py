@@ -17,7 +17,7 @@ from .config import Config
 from .detector import Spike, SpikeDetector
 from .models import ChatMessage, Stream
 from .recorder import Recorder
-from . import naming
+from . import naming, progress
 from .naming import clip_path, commit_number
 from .vertical import render_vertical
 
@@ -143,6 +143,15 @@ class ChannelSession:
 async def finish_clip(out: Path, details: Path, cfg: Config) -> Path | None:
     """Turn a saved original (in <Streamer>/.work) into its phone clip and file everything away.
     Used right after a clip is saved, and to finish clips left unfinished (see recover_unfinished)."""
+    from . import progress
+    progress.step(out.name, "Waiting for the clip before it to finish")
+    try:
+        return await _finish_clip(out, details, cfg)
+    finally:
+        progress.done(out.name)
+
+
+async def _finish_clip(out: Path, details: Path, cfg: Config) -> Path | None:
     c = cfg.clips
     folder = naming.streamer_dir(out)
     if not cfg.vertical.enabled:
@@ -189,8 +198,12 @@ async def recover_unfinished(cfg: Config) -> int:
     for work in sorted(root.glob(f"*/{naming.WORK}")):
         for leftover in sorted(work.glob("*.mp4")):
             if leftover.name.endswith((".phone.mp4", ".rendering.mp4")):
-                leftover.unlink(missing_ok=True)  # a half-made phone clip from last time
+                base = leftover.name.replace(".phone.mp4", ".mp4").replace(".rendering.mp4", ".mp4")
+                if progress.get(base) is None:
+                    leftover.unlink(missing_ok=True)  # a half-made phone clip from last time
                 continue
+            if progress.get(leftover.name) is not None:
+                continue  # being made right now
             details = naming.details_path(leftover)
             try:
                 json.loads(details.read_text(encoding="utf-8"))

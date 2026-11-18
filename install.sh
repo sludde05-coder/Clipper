@@ -115,6 +115,15 @@ SPEECH=0
 if "$VPY" -m pip install --quiet -r requirements-speech.txt; then SPEECH=1; ok "Speech-to-text installed"
 else warn "Couldn't install it. Clips still get captions, just not word-by-word ones."; fi
 
+step "Getting the browser for auto-filling uploads"
+if [ -d "/Applications/Google Chrome.app" ] || have google-chrome || have chromium; then
+  ok "Uses your Chrome"
+elif "$VPY" -m playwright install chromium >/dev/null 2>&1; then
+  ok "Browser ready"
+else
+  warn "Couldn't get it now. Posting still works; it just won't fill in the upload page for you."
+fi
+
 if [ ! -f config.toml ]; then cp config.example.toml config.toml; ok "Created config.toml"; fi
 chmod +x Clipper.command install.command install.sh 2>/dev/null || true
 
