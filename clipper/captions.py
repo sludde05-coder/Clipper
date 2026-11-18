@@ -123,8 +123,13 @@ def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur"
                    f"{{\\an{hook_anchor}\\pos(540,{hook_y})\\fad(250,0)}}{hook}")
 
     emphasis = {e.lower().strip(".,!?") for e in plan.emphasis}
-    for group in group_words(words):
+    groups = group_words(words)
+    for gi, group in enumerate(groups):
+        # Linger a moment after the last word, but never into the next group: two groups on screen
+        # at once draw on top of each other and turn into a jumble.
         g_end = group[-1].end + 0.15
+        if gi + 1 < len(groups):
+            g_end = max(group[-1].start + 0.05, min(g_end, groups[gi + 1][0].start))
         for i, w in enumerate(group):
             start = w.start
             end = group[i + 1].start if i + 1 < len(group) else g_end

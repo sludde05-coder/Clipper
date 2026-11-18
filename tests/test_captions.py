@@ -71,3 +71,16 @@ def test_swear_words_are_bleeped_everywhere_on_screen():
     ass = build_ass(plan, words("what the fuck bro"), 10.0)
     assert "FUCK" not in ass and "SHIT" not in ass
     assert "HE SAID *#@* IT" in ass and "HOLY *#@*" in ass and ass.count("*#@*") >= 4
+
+
+def test_spoken_word_groups_never_overlap():
+    """Two groups on screen at once draw over each other ("YOU'LL" + "WE'LL HELP" jumbled)."""
+    import re
+    ws = [Word(0.0, 0.3, "you'll"), Word(0.3, 0.6, "see."), Word(0.65, 0.9, "we'll"), Word(0.9, 1.2, "help")]
+    ass = build_ass(Plan(hook="", mood="hype"), ws, 5.0)
+    def sec(s):
+        h, m, x = s.split(":")
+        return int(h) * 3600 + int(m) * 60 + float(x)
+    spans = sorted((sec(a), sec(b)) for a, b in re.findall(r"Dialogue: 1,([^,]+),([^,]+),Speech", ass))
+    assert len(spans) == 4
+    assert all(spans[i][1] <= spans[i + 1][0] + 1e-6 for i in range(len(spans) - 1)), spans

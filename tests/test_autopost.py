@@ -81,9 +81,10 @@ def test_instagram_goes_through_create_and_fills_caption(site):
     async def fn(ap):
         left = await ap.fill("instagram", video, {"caption": "Day one chaos\n\n#reels"}, lambda s: None)
         page = ap._pages["instagram"]
-        return left, await page.evaluate("[window.__file, window.__nexts]"), await page.inner_text("#cap")
-    left, (file, nexts), caption = run(tmp, fn)
+        return left, await page.evaluate("[window.__file, window.__nexts, window.__shape]"), await page.inner_text("#cap")
+    left, (file, nexts, shape), caption = run(tmp, fn)
     assert file == video.name and nexts == 2
+    assert shape == "original"                      # full 9:16, not Instagram's default square
     assert caption.replace("\r", "").split("\n") == ["Day one chaos", "", "#reels"]
     assert "Share" in left
 
@@ -260,3 +261,18 @@ def test_chrome_decodes_video_in_software(site):
         await page.goto("chrome://version")
         return await page.inner_text("body")
     assert "--disable-accelerated-video-decode" in run(tmp, fn)
+
+
+def test_instagram_is_not_shared_cut_to_a_square(site, monkeypatch):
+    """If the Original shape can't be chosen, Clipper won't click Share for you."""
+    video, tmp = site
+    monkeypatch.setattr(autopost, "IG_CROP", ['svg[aria-label="Something else"]'])
+    monkeypatch.setattr(autopost.AutoPoster, "_first", _fast_first(autopost.AutoPoster._first))
+
+    async def fn(ap):
+        left = await ap.fill("instagram", video, {"caption": "x"}, lambda s: None)
+        assert "square" in left and "Original" in left
+        with pytest.raises(autopost.FillError, match="square"):
+            await ap.fill("instagram", video, {"caption": "x"}, lambda s: None, submit=True)
+        return await ap._pages["instagram"].evaluate("window.__posted")
+    assert run(tmp, fn) is None

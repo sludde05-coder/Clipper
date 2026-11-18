@@ -39,6 +39,11 @@ POST_ITEM = re.compile(r"^\s*(Post|Inlägg)\s*$", re.I)
 EDIT_COVER = re.compile(r"^\s*(Edit cover|Redigera omslag|Ändra omslag)\s*$", re.I)
 UPLOAD_COVER = re.compile(r"^\s*(Upload cover|Ladda upp omslag)\s*$", re.I)
 CONFIRM_COVER = re.compile(r"^\s*(Confirm|Save|Done|Bekräfta|Spara|Klar)\s*$", re.I)
+ORIGINAL = re.compile(r"^\s*Original\s*$", re.I)
+IG_CROP = ['svg[aria-label="Select crop"]', 'svg[aria-label="Select Crop"]', 'svg[aria-label="Välj beskärning"]',
+           'svg[aria-label="Beskär"]']
+SHAPE_MISSED = ("Instagram may have cut it to a square: click Back to the crop step, click the crop icon "
+                "(bottom left) and choose Original before you Share")
 IG_COVER = re.compile(r"^\s*(Select from computer|Välj från datorn|Välj från dator)\s*$", re.I)
 COVER_MISSED = "Cover: Clipper couldn't set it, so pick one yourself (the cover file is in clips/.covers)"
 
@@ -65,6 +70,7 @@ class AutoPoster:
         self._pages: dict[str, object] = {}
         self._lock = asyncio.Lock()
         self._signin_proc: subprocess.Popen | None = None
+        self._shape_ok = True   # did Instagram's crop step get set to Original (9:16)?
 
     # ------------------------------------------------------------ browser
 
@@ -257,6 +263,10 @@ class AutoPoster:
             if not submit:
                 return left
             page = self._pages[platform]
+            if platform == "instagram" and not self._shape_ok:
+                fix = SHAPE_MISSED.split(": ", 1)[1]
+                raise FillError("not shared, because Instagram would have cut the video to a square. "
+                                + fix[0].upper() + fix[1:])
             return await {"tiktok": self._post_tiktok, "youtube": self._post_youtube,
                           "instagram": self._post_instagram}[platform](page, status)
 
@@ -459,6 +469,7 @@ class AutoPoster:
             await ok.first.click(timeout=4000)  # "Video posts are now shared as reels"
         except Exception:  # noqa: BLE001
             pass
+        self._shape_ok = await self._original_shape(page, status)
         cover_set = cover is None
         for step in range(2):  # crop -> edit -> caption
             if step == 1 and cover is not None:   # the Edit step is where the cover photo is chosen
@@ -476,7 +487,28 @@ class AutoPoster:
         if box is None:
             raise FillError("the video is in, but the caption box didn't show up: paste the caption yourself")
         await self._replace_text(page, box, captions["caption"])
-        return "Check it, then click Share" + ("" if cover_set else f". {COVER_MISSED}")
+        notes = ([] if self._shape_ok else [SHAPE_MISSED]) + ([] if cover_set else [COVER_MISSED])
+        return ". ".join(["Check it, then click Share", *notes])
+
+    async def _original_shape(self, page, status) -> bool:
+        """Instagram's crop step starts on a 1:1 square, which cuts a phone video down and shows it with
+        big black bars. Pick Original so the full 9:16 video is kept."""
+        await _say(status, "Keeping the full 9:16 shape")
+        crop = await self._first(page, IG_CROP, timeout=20)
+        if crop is None:
+            log.info("Instagram: no crop button found, so the shape wasn't set to Original")
+            return False
+        try:
+            await crop.click()
+            orig = await _wait_enabled(page, [page.get_by_role("button", name=ORIGINAL), page.get_by_text(ORIGINAL)], 8)
+            if orig is None:
+                return False
+            await orig.click()
+            await asyncio.sleep(0.8)
+            return True
+        except Exception as e:  # noqa: BLE001
+            log.info("Instagram: couldn't choose the Original shape (%s)", e)
+            return False
 
 
 def profile_in_use(profile_dir: Path) -> bool:

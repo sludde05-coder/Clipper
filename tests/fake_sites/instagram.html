@@ -8,6 +8,9 @@
   <div id="reels" hidden>Video posts are now shared as reels <button id="ok">OK</button></div>
   <div id="coverpane" hidden>Cover photo <div role="button" id="pickcover" tabindex="0">Select from computer</div>
     <input type="file" accept="image/jpeg,image/png" id="coverin" style="display:none"></div>
+  <div id="croptools" hidden><div role="button" tabindex="0" id="cropbtn"><svg aria-label="Select crop" width="16" height="16"><rect width="16" height="16"/></svg></div>
+    <div id="cropmenu" hidden><div role="button" tabindex="0" id="orig">Original <svg aria-label="Photo outline icon" width="8" height="8"></svg></div>
+      <div role="button" tabindex="0">1:1</div><div role="button" tabindex="0">4:5</div></div></div>
   <div role="button" id="next" hidden tabindex="0">Next</div>
   <div id="capwrap" hidden><div aria-label="Write a caption..." contenteditable="true" id="cap"></div><div role="button" id="share" tabindex="0">Share</div></div>
   <div id="shared" hidden>Your reel has been shared.</div>
@@ -17,8 +20,11 @@ let stage = 0;
 create.onclick = e => { e.preventDefault(); menu.hidden = false; };
 postitem.onclick = e => { e.preventDefault(); menu.hidden = true; dlg.hidden = false; };
 f.onchange = () => { window.__file = f.files[0].name; reels.hidden = false; };
-ok.onclick = () => { reels.hidden = true; next.hidden = false; };
-next.onclick = () => { stage++; window.__nexts = stage; coverpane.hidden = stage !== 1;
+window.__shape = "1:1";   // Instagram starts on a square
+ok.onclick = () => { reels.hidden = true; next.hidden = false; croptools.hidden = false; };
+cropbtn.onclick = () => cropmenu.hidden = false;
+orig.onclick = () => { window.__shape = "original"; cropmenu.hidden = true; };
+next.onclick = () => { stage++; window.__nexts = stage; coverpane.hidden = stage !== 1; croptools.hidden = true;
   if (stage >= 2) { next.hidden = true; capwrap.hidden = false; } };
 pickcover.onclick = () => coverin.click();
 coverin.onchange = () => window.__cover = coverin.files[0].name;
