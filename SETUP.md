@@ -66,7 +66,13 @@ To make re-rendering possible, each clip's caption-free original is kept out of 
    caption** for you. Paste it (Ctrl+V), post it on the site, then press **✓ Posted, next** (or **Skip**).
 4. Posted clips get a ✓ per platform and move from **To post** to **Posted**.
 
-**Deleting** a clip moves it to `clips/Deleted clips`, so you can still get it back.
+### Deleting clips
+
+- **One clip:** open it and press **Delete**.
+- **Several at once:** tick them in **Clips** and press **Delete selected** (or the **Delete** key on your keyboard).
+- Deleted clips go to **🗑 Deleted clips** at the bottom of the streamer list, so a mistake isn't final:
+  tick clips there and press **Restore selected** to bring them back (captions still editable), or
+  **Delete forever** / **Empty deleted clips** to free up the disk space for good.
 
 The old text menu still exists as **`Clipper text menu.bat`**, if you ever want it.
 

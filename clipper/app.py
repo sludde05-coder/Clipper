@@ -404,17 +404,107 @@ class ClipperApp:
     async def job(self, request):
         return web.json_response(self.jobs.get(request.query.get("id", ""), {"state": "none", "error": ""}))
 
+    def _to_bin(self, clip: Path) -> None:
+        """Move a clip (phone video, details, hidden original) to clips/Deleted clips/<Streamer>/."""
+        bin_dir = self.clips_dir / DELETED / clip.parent.parent.name
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        source = naming.source_for(clip)
+        for f, name in ((clip, clip.name), (self._details(clip), clip.stem + ".json"),
+                        (source, clip.stem + "_original.mp4")):
+            if f and f.exists():
+                f.replace(bin_dir / name)
+
     async def delete_clip(self, request):
         body = await request.json()
-        clip = self._clip(body.get("id", ""))
-        streamer = clip.parent.parent
-        bin_dir = self.clips_dir / DELETED / streamer.name
-        bin_dir.mkdir(parents=True, exist_ok=True)
-        for f in (clip, self._details(clip), naming.source_for(clip)):
-            if f and f.exists():
-                f.replace(bin_dir / (f.name if f.suffix == ".json" or f == clip else f.stem + "_original" + f.suffix))
-        log.info("🗑  moved %s to %s", clip.name, DELETED)
-        return web.json_response({"ok": True})
+        ids = body.get("ids") or ([body["id"]] if body.get("id") else [])
+        done = 0
+        for cid in ids:
+            try:
+                self._to_bin(self._clip(cid))
+                done += 1
+            except web.HTTPNotFound:
+                continue
+        log.info("🗑  moved %d clip%s to %s", done, "" if done == 1 else "s", DELETED)
+        return web.json_response({"ok": True, "deleted": done})
+
+    # ------------------------------------------------------------ deleted clips
+
+    def _bin_clip(self, cid: str) -> Path:
+        """A clip in Deleted clips by id; refuses anything else."""
+        p = (self.clips_dir / cid).resolve()
+        bin_root = (self.clips_dir / DELETED).resolve()
+        if (p.parent.parent != bin_root or p.suffix.lower() != ".mp4" or p.stem.endswith("_original")
+                or not p.is_file()):
+            raise web.HTTPNotFound(text="clip not found")
+        return p
+
+    def _bin_files(self, clip: Path) -> list[Path]:
+        return [f for f in (clip, clip.with_suffix(".json"), clip.with_name(clip.stem + "_original.mp4")) if f.exists()]
+
+    async def deleted(self, request):
+        root = self.clips_dir / DELETED
+        items = []
+        if root.exists():
+            for p in sorted(root.glob("*/*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True):
+                if p.stem.endswith("_original"):
+                    continue
+                cid = self._id(p)
+                m = NAME_RE.match(p.stem)
+                try:
+                    hook = (json.loads(p.with_suffix(".json").read_text(encoding="utf-8")).get("captions") or {}).get("hook", "")
+                except (OSError, ValueError):
+                    hook = ""
+                items.append({"id": cid, "name": p.stem, "streamer": p.parent.name, "hook": hook,
+                              "date": m["date"] if m else "", "time": m["time"].replace("-", ":") if m else "",
+                              "number": int(m["n"]) if m else 0,
+                              "size_mb": round(sum(f.stat().st_size for f in self._bin_files(p)) / 1e6, 1),
+                              "thumb": f"/thumb?id={quote(cid)}&deleted=1&v={int(p.stat().st_mtime)}"})
+        return web.json_response({"clips": items, "total_mb": round(sum(i["size_mb"] for i in items), 1)})
+
+    async def restore(self, request):
+        body = await request.json()
+        done = 0
+        for cid in body.get("ids", []):
+            try:
+                clip = self._bin_clip(cid)
+            except web.HTTPNotFound:
+                continue
+            streamer = self.clips_dir / clip.parent.name
+            for f, dest in ((clip, streamer / naming.PHONE / clip.name),
+                            (clip.with_suffix(".json"), streamer / naming.DETAILS / (clip.stem + ".json")),
+                            (clip.with_name(clip.stem + "_original.mp4"), streamer / naming.SOURCE / clip.name)):
+                if f.exists():
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    f.replace(dest)
+            done += 1
+        log.info("↩  restored %d clip%s", done, "" if done == 1 else "s")
+        return web.json_response({"ok": True, "restored": done})
+
+    async def purge(self, request):
+        """Delete clips in Deleted clips for good (all of them with {"all": true})."""
+        body = await request.json()
+        root = self.clips_dir / DELETED
+        if body.get("all"):
+            clips = [p for p in root.glob("*/*.mp4") if not p.stem.endswith("_original")] if root.exists() else []
+        else:
+            clips = []
+            for cid in body.get("ids", []):
+                try:
+                    clips.append(self._bin_clip(cid))
+                except web.HTTPNotFound:
+                    continue
+        freed = 0
+        for clip in clips:
+            for f in self._bin_files(clip):
+                freed += f.stat().st_size
+                f.unlink()
+            (self.clips_dir / ".thumbs" / (clip.parent.name + "__" + clip.stem + ".jpg")).unlink(missing_ok=True)
+        if root.exists():
+            for d in root.iterdir():
+                if d.is_dir() and not any(d.iterdir()):
+                    d.rmdir()
+        log.info("🗑  deleted %d clip%s for good (%.0f MB freed)", len(clips), "" if len(clips) == 1 else "s", freed / 1e6)
+        return web.json_response({"ok": True, "deleted": len(clips), "freed_mb": round(freed / 1e6, 1)})
 
     async def mark_posted(self, request):
         body = await request.json()
@@ -490,7 +580,8 @@ class ClipperApp:
         return web.FileResponse(self._clip(request.query.get("id", "")), headers={"Cache-Control": "no-store"})
 
     async def thumb(self, request):
-        clip = self._clip(request.query.get("id", ""))
+        cid = request.query.get("id", "")
+        clip = self._bin_clip(cid) if request.query.get("deleted") else self._clip(cid)
         cache = self.clips_dir / ".thumbs"
         cache.mkdir(parents=True, exist_ok=True)
         out = cache / (clip.parent.parent.name + "__" + clip.stem + ".jpg")
@@ -612,6 +703,9 @@ class ClipperApp:
         r.add_post("/api/clip/render", self.rerender)
         r.add_get("/api/clip/job", self.job)
         r.add_post("/api/clip/delete", self.delete_clip)
+        r.add_get("/api/deleted", self.deleted)
+        r.add_post("/api/deleted/restore", self.restore)
+        r.add_post("/api/deleted/purge", self.purge)
         r.add_post("/api/clip/posted", self.mark_posted)
         r.add_post("/api/clip/finish", self.finish_clip)
         r.add_post("/api/clip/reveal", self.reveal)

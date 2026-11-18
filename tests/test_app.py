@@ -165,3 +165,37 @@ def test_settings_roundtrip(tmp_path):
         assert app.cfg.post.tiktok_tags == "#gaming" and app.cfg.discovery.languages == []
     run(conf, fn)
     assert "nope" not in conf.read_text()
+
+
+def test_bulk_delete_restore_and_delete_forever(tmp_path):
+    conf, phone, det, src = make_library(tmp_path)
+    second = phone.with_name("KaiCenat_2026-11-19_22-00-00_2.mp4")
+    second.write_bytes(phone.read_bytes())
+    (det.parent / (second.stem + ".json")).write_text(det.read_text())
+
+    async def fn(c, app):
+        ids = [x["id"] for x in (await (await c.get("/api/clips")).json())["clips"]]
+        assert len(ids) == 2
+        r = await (await c.post("/api/clip/delete", headers=H, json={"ids": ids})).json()
+        assert r["deleted"] == 2 and (await (await c.get("/api/clips")).json())["clips"] == []
+
+        binned = (await (await c.get("/api/deleted")).json())["clips"]
+        assert sorted(b["number"] for b in binned) == [1, 2]
+        assert (await c.get(binned[0]["thumb"])).status == 200
+
+        first = next(b for b in binned if b["number"] == 1)
+        r = await (await c.post("/api/deleted/restore", headers=H, json={"ids": [first["id"]]})).json()
+        assert r["restored"] == 1
+        back = (await (await c.get("/api/clips")).json())["clips"]
+        assert len(back) == 1 and back[0]["hook"] == "Kai trusted the NPC"
+        detail = await (await c.get("/api/clip", params={"id": back[0]["id"]})).json()
+        assert detail["can_rerender"]                      # the hidden original came back too
+
+        r = await (await c.post("/api/deleted/purge", headers=H, json={"all": True})).json()
+        assert r["deleted"] == 1 and (await (await c.get("/api/deleted")).json())["clips"] == []
+        # a clip outside Deleted clips can't be purged
+        r = await (await c.post("/api/deleted/purge", headers=H, json={"ids": [back[0]["id"]]})).json()
+        assert r["deleted"] == 0
+    run(conf, fn)
+    assert phone.exists() and src.exists() and not second.exists()
+    assert not (tmp_path / "clips" / "Deleted clips" / "KaiCenat").exists()

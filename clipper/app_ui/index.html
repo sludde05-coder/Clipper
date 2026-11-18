@@ -14,6 +14,7 @@
     --radius: 14px;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.45 "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; }
   button, input, select, textarea { font: inherit; color: inherit; }
@@ -231,7 +232,13 @@
               <button class="btn ghost" id="selectall">Select all</button>
               <div class="spacer"></div>
               <span class="help" id="selcount"></span>
+              <button class="btn danger" id="delsel" disabled>Delete selected</button>
               <button class="btn primary" id="postsel" disabled>Post selected</button>
+              <span id="bintools" hidden class="row">
+                <button class="btn" id="restoresel" disabled>Restore selected</button>
+                <button class="btn danger" id="purgesel" disabled>Delete forever</button>
+                <button class="btn danger" id="purgeall">Empty deleted clips</button>
+              </span>
             </div>
             <div class="cards" id="cards"></div>
           </div>
@@ -454,21 +461,32 @@
 
   // ---------------------------------------------------------------- clips library
   let clips = [], streamers = [], current = "", filter = "todo", selected = new Set();
+  let binClips = [], binMb = 0;
+  const BIN = "__deleted__";
   const isPosted = c => Object.values(c.posted).length > 0 && Object.values(c.posted).every(Boolean);
   async function loadClips() {
     let data; try { data = await api("/api/clips"); } catch (e) { return; }
     clips = data.clips; streamers = data.streamers;
+    try { const b = await api("/api/deleted"); binClips = b.clips; binMb = b.total_mb; } catch (e) {}
     const todo = clips.filter(c => !isPosted(c)).length;
     $("#navcount").hidden = !todo; $("#navcount").textContent = todo;
-    for (const id of [...selected]) if (!clips.find(c => c.id === id)) selected.delete(id);
+    const pool = current === BIN ? binClips : clips;
+    for (const id of [...selected]) if (!pool.find(c => c.id === id)) selected.delete(id);
     renderLibrary();
   }
   function renderLibrary() {
     const total = clips.filter(c => !isPosted(c)).length;
     $("#streamers").innerHTML = `<button class="streamer ${current ? "" : "on"}" data-s="">All streamers<span class="n">${clips.length}</span>${total ? `<span class="todo">${total}</span>` : ""}</button>` +
       streamers.map(s => `<button class="streamer ${current === s.name ? "on" : ""}" data-s="${esc(s.name)}">${esc(s.name)}<span class="n">${s.count}</span>${s.to_post ? `<span class="todo">${s.to_post}</span>` : ""}</button>`).join("") +
-      (current ? `<button class="btn ghost" style="margin-top:8px" id="openstreamer">Open ${esc(current)}'s folder</button>` : "");
-    $$("#streamers .streamer").forEach(b => b.onclick = () => { current = b.dataset.s; renderLibrary(); });
+      `<button class="streamer ${current === BIN ? "on" : ""}" data-s="${BIN}" style="margin-top:14px">🗑 Deleted clips<span class="n">${binClips.length}</span></button>` +
+      (current && current !== BIN ? `<button class="btn ghost" style="margin-top:8px" id="openstreamer">Open ${esc(current)}'s folder</button>` : "");
+    $$("#streamers .streamer").forEach(b => b.onclick = () => {
+      if ((b.dataset.s === BIN) !== (current === BIN)) selected.clear();   // don't mix normal and deleted clips
+      current = b.dataset.s; renderLibrary();
+    });
+    const inBin = current === BIN;
+    $("#filter").hidden = inBin; $("#postsel").hidden = inBin; $("#delsel").hidden = inBin; $("#bintools").hidden = !inBin;
+    if (inBin) return renderBin();
     if ($("#openstreamer")) $("#openstreamer").onclick = () => api("/api/open-folder", { which: "streamer", name: current });
 
     const list = visible();
@@ -495,17 +513,69 @@
     $("#selcount").textContent = selected.size ? `${selected.size} selected` : "";
     $("#postsel").disabled = !selected.size;
     $("#postsel").textContent = selected.size ? `Post selected (${selected.size})` : "Post selected";
+    $("#delsel").disabled = !selected.size;
+    $("#delsel").textContent = selected.size ? `Delete selected (${selected.size})` : "Delete selected";
   }
+  function renderBin() {
+    if (!binClips.length) {
+      $("#cards").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>No deleted clips</b>Clips you delete wait here, so you can restore them or delete them for good.</div>`;
+    } else {
+      $("#cards").innerHTML = `<div class="note" style="grid-column:1/-1">Deleted clips stay here until you delete them forever. Together they use ${binMb} MB.
+          Click clips to select them.</div>` +
+        binClips.map(c => `<div class="clipcard ${selected.has(c.id) ? "sel" : ""}" data-id="${esc(c.id)}">
+        <div class="thumb" style="background-image:url('${c.thumb}');filter:grayscale(.6)"><div class="check">${selected.has(c.id) ? "✓" : ""}</div></div>
+        <div class="info"><div class="hook">${esc(c.hook || "No headline")}</div>
+          <div class="meta">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)} · #${c.number} · ${c.size_mb} MB</div></div></div>`).join("");
+    }
+    $$("#cards .clipcard").forEach(card => card.onclick = () => {
+      const id = card.dataset.id; selected.has(id) ? selected.delete(id) : selected.add(id); renderLibrary();
+    });
+    $("#selcount").textContent = selected.size ? `${selected.size} selected` : "";
+    $("#restoresel").disabled = !selected.size; $("#purgesel").disabled = !selected.size;
+    $("#purgeall").disabled = !binClips.length;
+  }
+  async function deleteClips(ids) {
+    if (!ids.length) return false;
+    const n = ids.length;
+    if (!confirm(`Delete ${n} clip${n > 1 ? "s" : ""}? ${n > 1 ? "They go" : "It goes"} to Deleted clips, so you can still restore ${n > 1 ? "them" : "it"}.`)) return false;
+    const r = await api("/api/clip/delete", { ids });
+    ids.forEach(id => selected.delete(id));
+    toast(`${r.deleted} clip${r.deleted === 1 ? "" : "s"} deleted`);
+    await loadClips();
+    return true;
+  }
+  $("#delsel").onclick = () => deleteClips([...selected]);
+  $("#restoresel").onclick = async () => {
+    const r = await api("/api/deleted/restore", { ids: [...selected] });
+    selected.clear(); toast(`${r.restored} clip${r.restored === 1 ? "" : "s"} restored`); loadClips();
+  };
+  $("#purgesel").onclick = async () => {
+    const n = selected.size;
+    if (!confirm(`Delete ${n} clip${n > 1 ? "s" : ""} forever? This can't be undone.`)) return;
+    const r = await api("/api/deleted/purge", { ids: [...selected] });
+    selected.clear(); toast(`Deleted for good (${r.freed_mb} MB freed)`); loadClips();
+  };
+  $("#purgeall").onclick = async () => {
+    if (!confirm(`Delete all ${binClips.length} deleted clips forever? This can't be undone.`)) return;
+    const r = await api("/api/deleted/purge", { all: true });
+    selected.clear(); toast(`Deleted clips emptied (${r.freed_mb} MB freed)`); loadClips();
+  };
   function visible() {
     return clips.filter(c => (!current || c.streamer === current) &&
       (filter === "all" || (filter === "posted" ? isPosted(c) : !isPosted(c))));
   }
   $$("#filter button").forEach(b => b.onclick = () => { filter = b.dataset.f; $$("#filter button").forEach(x => x.classList.toggle("on", x === b)); renderLibrary(); });
   $("#selectall").onclick = () => {
-    const list = visible(); const all = list.every(c => selected.has(c.id));
+    const list = current === BIN ? binClips : visible(); const all = list.every(c => selected.has(c.id));
     list.forEach(c => all ? selected.delete(c.id) : selected.add(c.id)); renderLibrary();
   };
   $("#postsel").onclick = () => startFlow([...selected]);
+
+  // The Delete key deletes the selected clips (not while typing).
+  document.addEventListener("keydown", e => {
+    if (e.key === "Delete" && page === "clips" && !ed && !flow && current !== BIN && selected.size &&
+        !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) deleteClips([...selected]);
+  });
 
   // ---------------------------------------------------------------- editor
   let ed = null;
@@ -614,10 +684,7 @@
   $("#ed-post").onclick = () => startFlow([ed.id]);
   $("#ed-reveal").onclick = () => api("/api/clip/reveal", { id: ed.id });
   $("#ed-phone").onclick = async () => { await api("/api/clip/to-phone", { id: ed.id }); toast("Sent to the phone app (POST folder)"); };
-  $("#ed-delete").onclick = async () => {
-    if (!confirm("Delete this clip? It goes to the 'Deleted clips' folder, so you can still get it back from there.")) return;
-    await api("/api/clip/delete", { id: ed.id }); toast("Clip deleted"); selected.delete(ed.id); showLibrary(); loadClips();
-  };
+  $("#ed-delete").onclick = async () => { if (await deleteClips([ed.id])) showLibrary(); };
 
   // ---------------------------------------------------------------- post flow
   let flow = null;
