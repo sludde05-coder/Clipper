@@ -208,6 +208,7 @@
         <h2>Streams being clipped</h2>
         <div id="rows"><div class="empty" style="padding:24px"><b>Nothing running</b>Press Start clipping.</div></div>
         <div class="help" id="rule"></div>
+        <div class="row" id="blockedrow" style="margin-top:10px" hidden></div>
       </div>
 
       <div class="card" style="margin-top:16px">
@@ -455,18 +456,31 @@
     $("#restartnote").hidden = !state.needs_restart;
     $("#rule").textContent = `A clip is made when chat jumps far enough above its normal speed. Busy chats need a smaller jump than quiet ones: each streamer's target is shown in the bar.`;
     renderRows(state.rows, on);
+    const br = $("#blockedrow"), blocked = state.blocked || [];
+    br.hidden = !blocked.length;
+    br.innerHTML = `<span class="help">Blocked:</span>` + blocked.map(n =>
+      `<span class="tag">${esc(n)} <button class="btn ghost" style="padding:0 4px" data-unblock="${esc(n)}" title="Unblock">✕</button></span>`).join("");
+    $$("#blockedrow [data-unblock]").forEach(b => b.onclick = async () => {
+      await api("/api/block", { name: b.dataset.unblock, block: false }); toast(`${b.dataset.unblock} unblocked`); refreshState();
+    });
   }
   function renderRows(rows, on) {
     if (!on) { $("#rows").innerHTML = `<div class="empty" style="padding:24px"><b>Nothing running</b>Press Start clipping.</div>`; return; }
     if (!rows.length) { $("#rows").innerHTML = `<div class="empty" style="padding:24px"><b>Looking for streams…</b>This takes a few seconds.</div>`; return; }
     const need = state.multiplier || 3;
-    $("#rows").innerHTML = `<table><tr><th>Streamer</th><th>Video</th><th class="num">Viewers</th><th class="num">Chat /s</th><th class="num">Normal</th><th>Biggest jump (10 min)</th><th class="num">Clips</th></tr>
+    $("#rows").innerHTML = `<table><tr><th>Streamer</th><th>Video</th><th class="num">Viewers</th><th class="num">Chat /s</th><th class="num">Normal</th><th>Biggest jump (10 min)</th><th class="num">Clips</th><th></th></tr>
       ${rows.map(r => `<tr><td><b>${esc(r.name)}</b> <span class="tag">${esc(r.platform)}</span></td>
         <td>${r.video ? '<span class="dot on"></span>recording' : '<span class="dot"></span><span class="help">waiting</span>'}</td>
         <td class="num">${r.viewers ? r.viewers.toLocaleString() : "–"}</td>
         <td class="num">${r.chat}</td><td class="num">${r.normal}</td>
         <td>${r.peak ? "x" + r.peak : "–"} <span class="help">/ x${r.need || need}</span><span class="meter"><i style="width:${Math.min(100, (r.peak / (r.need || need)) * 100)}%"></i></span></td>
-        <td class="num">${r.clips}</td></tr>`).join("")}</table>`;
+        <td class="num">${r.clips}</td>
+        <td><button class="btn ghost" data-block="${esc(r.name)}" title="Never clip ${esc(r.name)} again (on any platform)">🚫 Block</button></td></tr>`).join("")}</table>`;
+    $$("#rows [data-block]").forEach(b => b.onclick = async () => {
+      if (!confirm(`Block ${b.dataset.block}? They won't be clipped again on any platform, and the next biggest stream takes their spot.`)) return;
+      await api("/api/block", { name: b.dataset.block, block: true });
+      toast(`${b.dataset.block} blocked`); refreshState();
+    });
   }
   $("#startstop").onclick = async () => {
     if (state.running) { $("#startstop").disabled = true; await api("/api/clipping/stop", {}); return refreshState(); }

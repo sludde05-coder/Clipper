@@ -10,6 +10,7 @@ platforms = ["twitch", "youtube", "kick"]
 refresh_seconds = 300                            # re-rank every 5 min
 youtube_refresh_seconds = 900                    # YouTube quota: keep >= 900
 always_track = []                                # e.g. ["twitch:kaicenat", "kick:adinross"]
+blocked = []                                     # streamers never to clip, e.g. ["SomeStreamer"] (any platform)
 languages = ["en"]                               # only English streams; [] = any language
                                                  # (clips where the streamer clearly speaks another language go to clips/other-languages)
 

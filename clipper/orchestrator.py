@@ -24,6 +24,12 @@ class Orchestrator:
         self.log_status = log_status
         self.sessions: dict[str, ChannelSession] = {}
         self.last_top: list[Stream] = []
+        self.refresh_now = asyncio.Event()   # set to look for streams again right away (e.g. after blocking one)
+
+    async def drop(self, keys: list[str]) -> None:
+        """Stop clipping these streams now (clips already in progress are finished)."""
+        stopping = [self.sessions.pop(k) for k in keys if k in self.sessions]
+        await asyncio.gather(*(s.stop() for s in stopping), return_exceptions=True)
 
     def status_rows(self) -> list[dict]:
         rows = []
@@ -96,8 +102,12 @@ class Orchestrator:
                 except Exception:  # noqa: BLE001
                     log.exception("discovery round failed")
                 waited = 0
-                while waited < self.cfg.discovery.refresh_seconds:
-                    await asyncio.sleep(5)
+                self.refresh_now.clear()
+                while waited < self.cfg.discovery.refresh_seconds and not self.refresh_now.is_set():
+                    try:
+                        await asyncio.wait_for(self.refresh_now.wait(), 5)
+                    except asyncio.TimeoutError:
+                        pass
                     waited += 5
                     since_status += 5
                     if since_status >= status_every:

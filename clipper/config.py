@@ -18,6 +18,7 @@ class DiscoveryConfig:
     refresh_seconds: int = 300
     youtube_refresh_seconds: int = 900   # YouTube search costs 100 quota units
     always_track: list[str] = field(default_factory=list)
+    blocked: list[str] = field(default_factory=list)                 # streamers never clipped, on any platform
     languages: list[str] = field(default_factory=lambda: ["en"])   # [] = any language
 
 

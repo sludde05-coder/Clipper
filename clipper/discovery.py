@@ -34,13 +34,18 @@ _AFFIX = re.compile(r"^(ttv|yt)+|(live|tv|ttv|yt|official|irl)+$")
 def person_key(st: Stream) -> str:
     """Who is streaming, the same on every platform: 'xQc' (Twitch) and 'xQc Live' (YouTube) -> 'xqc'."""
     name = (st.display_name or st.channel) if st.platform == "youtube" else st.channel
-    key = re.sub(r"[^a-z0-9]", "", (name or "").lower().split("#")[0])
+    return name_key(name) or st.key
+
+
+def name_key(name: str) -> str:
+    """A streamer name boiled down for matching: lowercase letters and digits, without 'ttv', 'live', 'tv'..."""
+    key = re.sub(r"[^a-z0-9]", "", (name or "").lower().split("#")[0].split(":")[-1])
     for _ in range(3):  # strip "ttv", "live", "tv" ... from either end
         shorter = _AFFIX.sub("", key)
         if len(shorter) < 3 or shorter == key:
             break
         key = shorter
-    return key or st.key
+    return key
 
 
 def one_per_streamer(streams) -> list[Stream]:
@@ -89,7 +94,9 @@ class Discovery:
         for st in found:
             if st.viewers >= d.min_viewers and st.viewers > best.get(st.key, Stream("", "", "")).viewers:
                 best[st.key] = st
-        ranked = sorted(one_per_streamer(best.values()), key=lambda s: s.viewers, reverse=True)[: d.top_n]
+        blocked = {name_key(b) for b in d.blocked if name_key(b)}
+        allowed = [s for s in best.values() if person_key(s) not in blocked and name_key(s.display_name) not in blocked]
+        ranked = sorted(one_per_streamer(allowed), key=lambda s: s.viewers, reverse=True)[: d.top_n]
         pinned = [parse_target(t) for t in d.always_track]
         keys = {s.key for s in ranked}
         return ranked + [p for p in pinned if p.key not in keys]

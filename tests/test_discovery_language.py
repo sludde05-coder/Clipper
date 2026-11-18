@@ -97,3 +97,16 @@ def test_multistreamer_is_clipped_once_on_the_bigger_stream():
     kept = sorted(s.key for s in one_per_streamer(streams))
     assert kept == ["twitch:jynxzi", "twitch:kaicenat", "twitch:xqc", "youtube:vid2"]
     assert person_key(Stream("twitch", "ttv", "u", 1, "", "")) == "ttv"            # never stripped to nothing
+
+
+def test_blocked_streamers_are_skipped_on_every_platform():
+    cfg = Config()
+    cfg.discovery.languages = []
+    cfg.discovery.top_n = 2
+    cfg.discovery.blocked = ["En1", "ytBR"]   # by name; "ytBR" is a YouTube video id here, matched as a name too
+    cfg.creds.twitch_client_id = cfg.creds.twitch_client_secret = "x"
+    cfg.creds.youtube_api_key = "x"
+    cfg.creds.kick_client_id = cfg.creds.kick_client_secret = "x"
+    top = asyncio.run(Discovery(cfg, FakeSession()).top_streams())
+    # en1 (9000 viewers) is blocked, so the next two biggest take the top 2
+    assert [t.channel for t in top] == ["es1", "ytEN"]

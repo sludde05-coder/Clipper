@@ -229,3 +229,32 @@ def test_clips_being_made_failed_and_set_aside_are_reported(tmp_path, monkeypatc
     run(conf, fn)
     assert calls == ["KaiCenat_2026-11-19_22-10-00_3.mp4"]
     assert (root / naming.WORK / "KaiCenat_2026-11-19_22-10-00_3.mp4").exists()
+
+
+def test_block_button_stops_the_streamer_and_saves_it(tmp_path):
+    import tomllib
+    from clipper.models import Stream
+    from clipper.orchestrator import Orchestrator
+    conf, *_ = make_library(tmp_path)
+    stopped = []
+
+    class FakeSession:
+        def __init__(self, st):
+            self.stream = st
+
+        async def stop(self):
+            stopped.append(self.stream.key)
+
+    async def fn(c, app):
+        app.orch = Orchestrator(app.cfg)
+        for st in (Stream("twitch", "kaicenat", "u", 9, "", "KaiCenat"), Stream("twitch", "xqc", "u", 8, "", "xQc")):
+            app.orch.sessions[st.key] = FakeSession(st)
+        r = await (await c.post("/api/block", headers=H, json={"name": "KaiCenat"})).json()
+        assert r["blocked"] == ["KaiCenat"]
+        assert stopped == ["twitch:kaicenat"] and list(app.orch.sessions) == ["twitch:xqc"]
+        assert app.orch.refresh_now.is_set()                       # looks for a replacement right away
+        assert (await (await c.get("/api/state")).json())["blocked"] == ["KaiCenat"]
+        r = await (await c.post("/api/block", headers=H, json={"name": "kaicenat", "block": False})).json()
+        assert r["blocked"] == []
+    run(conf, fn)
+    assert tomllib.loads(conf.read_text(encoding="utf-8"))["discovery"]["blocked"] == []

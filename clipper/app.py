@@ -57,6 +57,8 @@ SETTINGS = [
     ("discovery", "min_viewers", "Minimum viewers", "number", "Smaller streams are skipped", None),
     ("discovery", "platforms", "Find streams on", "multi", "", ["twitch", "youtube", "kick"]),
     ("discovery", "languages", "Language", "language", "", None),
+    ("discovery", "blocked", "Blocked streamers", "lines",
+     "Never clipped, on any platform. One per line. The Block button on the Clipping tab adds to this", None),
     ("discovery", "always_track", "Always clip these streamers", "lines",
      "One per line, e.g. twitch:kaicenat, kick:adinross or a YouTube live link", None),
     ("clips", "pre_roll", "Seconds before chat explodes", "number", "Used when the AI trim editor isn't available", None),
@@ -200,7 +202,8 @@ class ClipperApp:
             "running": running, "stopping": self.stopping, "mode": self.mode,
             "game": self.cfg.discovery.game, "rows": self.orch.status_rows() if (self.orch and running) else [],
             "multiplier": self.cfg.detector.multiplier, "min_rate": self.cfg.detector.min_rate,
-            "phone_url": self.phone.phone_url if self.phone else "", "needs_restart": self.needs_restart and running,
+            "phone_url": self.phone.phone_url if self.phone else "",
+            "blocked": self.cfg.discovery.blocked, "needs_restart": self.needs_restart and running,
             "jobs": {k: v["state"] for k, v in self.jobs.items() if v["state"] == "running"},
             "platforms": [{"key": k, "name": TARGETS[k].name} for k in self._platforms()],
             "autofill": self.cfg.post.autofill,
@@ -243,6 +246,30 @@ class ClipperApp:
             self.mode = f"Clipping the top {cfg.discovery.top_n} {cfg.discovery.game} streams"
         log.info("▶  %s", self.mode)
         return web.json_response({"ok": True})
+
+    async def block(self, request):
+        """Block (or unblock) a streamer: never clipped again, on any platform. Takes effect right away."""
+        from .discovery import name_key
+        body = await request.json()
+        name = str(body.get("name", "")).strip()
+        if not name_key(name):
+            raise web.HTTPBadRequest(text="no streamer name")
+        blocked = [b for b in self.cfg.discovery.blocked if name_key(b) != name_key(name)]
+        if body.get("block", True):
+            blocked.append(name)
+        path = Path(self.config_path)
+        path.write_text(set_value(path.read_text(encoding="utf-8"), "discovery", "blocked", blocked), encoding="utf-8")
+        self.cfg.discovery.blocked = blocked
+        if self.orch:
+            self.orch.cfg.discovery.blocked = blocked
+            if body.get("block", True):
+                from .discovery import person_key
+                gone = [k for k, s in self.orch.sessions.items()
+                        if person_key(s.stream) == name_key(name) or name_key(s.stream.display_name) == name_key(name)]
+                await self.orch.drop(gone)
+            self.orch.refresh_now.set()   # fill the free spot now instead of at the next 5-minute refresh
+        log.info("%s %s", "🚫 blocked" if body.get("block", True) else "✅ unblocked", name)
+        return web.json_response({"ok": True, "blocked": blocked})
 
     async def stop_clipping(self, request=None):
         if not (self.clip_task and not self.clip_task.done()):
@@ -845,6 +872,7 @@ class ClipperApp:
         r.add_get("/api/log", self.logs_since)
         r.add_post("/api/clipping/start", self.start_clipping)
         r.add_post("/api/clipping/stop", self.stop_clipping)
+        r.add_post("/api/block", self.block)
         r.add_get("/api/clips", self.clips)
         r.add_get("/api/clip", self.clip_detail)
         r.add_post("/api/clip/post-captions", self.save_post)
