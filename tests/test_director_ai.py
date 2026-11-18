@@ -54,7 +54,7 @@ def test_good_hook_needs_no_retry(monkeypatch):
 def test_recent_hooks_are_in_the_prompt(monkeypatch):
     run(monkeypatch, [answer("Kai found a secret car")], recent=["POV: you trust the NPC", "He did NOT see that"])
     prompt = FakeAnthropic.requests[0]["messages"][0]["content"][-1]["text"]
-    assert "POV: you trust the NPC" in prompt and "Don't reuse" in prompt
+    assert "POV: you trust the NPC" in prompt and "don't reuse their wording" in prompt
     assert "it is NOT the story" in prompt and "hook_options" in prompt
 
 
@@ -64,3 +64,11 @@ def test_hook_is_weak():
     assert d.hook_is_weak("POV: you trust the cops", ["POV: you trust the NPC"])
     assert not d.hook_is_weak("Kai trusted the wrong NPC", ["POV: you trust the NPC"])
     assert not d.hook_is_weak("He chatted up the cop", [])   # only the word "chat"
+
+
+def test_prompt_asks_for_the_clipper_headline_format():
+    p = d.PROMPT.format(name="Kai", platform="twitch", title="t", length=30, offset=20, transcript="x", chat="c",
+                        recent="", top_chat="KEKW")
+    assert "Kai went on a date in GTA 6 😭" in p and "You can get a job in GTA 6?????" in p
+    assert "NOT a description of the video" in p
+    assert all(h.endswith(("😭", "😂", "💀", "🔥", "😳", "🥹", "💔", "?")) for hs in d.HOOKS.values() for h in hs)

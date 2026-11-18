@@ -93,9 +93,11 @@ def group_words(words: list[Word], max_words: int = 3, max_gap: float = 0.6) -> 
 
 
 def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur",
-              font: str = "Arial", positions: tuple | None = None, hook_anchor: int = 2) -> str:
+              font: str = "Arial", positions: tuple | None = None, hook_anchor: int = 2,
+              draw_hook: bool = True) -> str:
     """positions = (hook_y, speech_y, beat_y) for layouts whose geometry depends on the clip (webcam on top);
-    hook_anchor 2 puts the headline's bottom at hook_y, 5 centres it there (on the seam)."""
+    hook_anchor 2 puts the headline's bottom at hook_y, 5 centres it there (on the seam).
+    draw_hook=False leaves the headline out (it's drawn as a picture instead, see headline.py)."""
     accent = COLORS.get(plan.mood, COLORS["hype"])
     hook_y, speech_y, beat_y = positions or POSITIONS.get(layout, POSITIONS["blur"])
     white, black = ass_color((255, 255, 255)), ass_color((0, 0, 0))
@@ -117,7 +119,7 @@ def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
 
-    hook = clean(plan.hook).upper()
+    hook = clean(plan.hook) if draw_hook else ""   # written the way the caption editor wrote it
     if hook:
         out.append(f"Dialogue: 2,{ts(0)},{ts(length)},Hook,,0,0,0,,"
                    f"{{\\an{hook_anchor}\\pos(540,{hook_y})\\fad(250,0)}}{hook}")

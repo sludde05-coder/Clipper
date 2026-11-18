@@ -12,11 +12,11 @@ import logging
 import tempfile
 from pathlib import Path
 
-from .captions import build_ass
 from .config import VerticalConfig
 from .director import Plan
 from .proc import NO_WINDOW
-from .vertical import facecam_geometry, filter_graph, probe_duration, probe_size, resolve_layout
+from .vertical import (facecam_geometry, filter_graph, probe_duration, probe_size, resolve_layout,
+                       with_headline, write_captions)
 
 log = logging.getLogger(__name__)
 
@@ -70,13 +70,13 @@ async def _from_source(source: Path, out: Path, cap: dict, meta: dict, cfg: Vert
         else:
             iw, ih = await asyncio.to_thread(probe_size, source)
             geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x)
-    # The headline fades in over the first quarter second; a picture starts at time 0, so no fade.
-    ass = build_ass(plan, [], length, layout, cfg.font, positions=geo["positions"] if geo else None,
-                    hook_anchor=5 if geo else 2).replace("\\fad(250,0)", "")
     with tempfile.TemporaryDirectory() as tmp:
-        (Path(tmp) / "captions.ass").write_text(ass, encoding="utf-8")
-        return await _ffmpeg(["-ss", f"{cover_time(meta, length):.2f}", "-i", str(source.resolve()),
-                              "-filter_complex", filter_graph(layout, plan.crop_focus_x, False, geo),
+        # The headline fades in over the first quarter second; a picture starts at time 0, so no fade.
+        inputs, overlay = write_captions(Path(tmp), plan, [], length, layout, cfg, geo, fade=False)
+        ass = Path(tmp) / "captions.ass"
+        ass.write_text(ass.read_text(encoding="utf-8").replace("\\fad(250,0)", ""), encoding="utf-8")
+        return await _ffmpeg(["-ss", f"{cover_time(meta, length):.2f}", "-i", str(source.resolve()), *inputs,
+                              "-filter_complex", with_headline(filter_graph(layout, plan.crop_focus_x, False, geo), overlay),
                               "-map", "[v]", "-frames:v", "1", "-q:v", "2", str(out.resolve())], cwd=tmp)
 
 

@@ -3,3 +3,4 @@ streamlink>=6.8
 anthropic>=2.8
 qrcode>=7.4
 playwright>=1.48
+pillow>=10.1

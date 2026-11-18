@@ -188,9 +188,9 @@ What the streamer says:
 {transcript}
 
 Write:
-- tiktok: 1-2 casual sentences (about 80-180 characters) that add context or a joke beyond the headline. Mention
-  {name} and "gta 6" naturally (people search for them) and usually end with a question that gets comments.
-  1-2 emoji at most. No hashtags here.
+- tiktok: 1-2 casual sentences (about 80-180 characters) in the same clipper style as the headline: start with
+  what {name} did ("{name} tried to rob a bank with a golf club 😭"), then a joke or a question that gets comments.
+  Mention "gta 6" naturally (people search for it). 1-2 emoji at most. No hashtags here.
 - instagram: same idea, a little more polished, 1-2 sentences. No hashtags here.
 - youtube_title: a Shorts title, max 60 characters, curiosity-driven, no hashtags, not just the headline again.
 - youtube_description: 1-2 sentences of context for the clip.
@@ -231,8 +231,10 @@ Check it like a picky senior editor:
 - Is the headline readable and not covering the streamer's face or the key action?
 - With the webcam-on-top layout: does the top part actually show the streamer's face? If it shows game UI, a logo,
   something cut in half or nothing useful, the webcam crop is wrong: answer layout "blur".
-- Does the headline sound like a real person, specific to this clip, or generic / robotic? If weak, write a better
-  one in new_hook (max 8 words, no emoji, never "chat"). Otherwise leave new_hook empty.
+- Is the headline in the clipper format, specific to this clip? It should read either "<Streamer> did <specific
+  thing>" with one emoji at the end ("Kai went on a date in GTA 6 😭"), or a question about the game ("You can get
+  a job in GTA 6?????"). If it describes the video like a narrator, is generic or robotic, write a better one in
+  new_hook (5-12 words, that format, never "chat"). Otherwise leave new_hook empty.
 - Are the reaction captions in the way or pointless? Then drop_beats true.
 ok is true only if nothing needs changing. issues: short notes on what's wrong (empty if ok)."""
 

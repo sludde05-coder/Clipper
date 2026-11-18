@@ -34,7 +34,7 @@ def test_grouping_breaks_on_pause_and_punctuation():
 def test_ass_has_all_layers_and_strips_emoji():
     plan = Plan(hook="He did WHAT 😱 {x}", mood="shock", beats=[Beat(3, "NO WAY 🚓")], emphasis=["bridge"])
     ass = build_ass(plan, words("jump the bridge now"), 10.0)
-    assert "HE DID WHAT X" in ass and "😱" not in ass and "🚓" not in ass
+    assert "He did WHAT x" in ass and "😱" not in ass and "🚓" not in ass
     assert ass.count(",Speech,") == 4           # one event per spoken word
     assert ",Beat,," in ass and "NO WAY" in ass
     assert "&H00303BFF" in ass                  # shock red as ASS &HAABBGGRR
@@ -70,7 +70,7 @@ def test_swear_words_are_bleeped_everywhere_on_screen():
     plan = Plan(hook="he said fuck it", mood="shock", beats=[Beat(3, "HOLY SHIT")])
     ass = build_ass(plan, words("what the fuck bro"), 10.0)
     assert "FUCK" not in ass and "SHIT" not in ass
-    assert "HE SAID *#@* IT" in ass and "HOLY *#@*" in ass and ass.count("*#@*") >= 4
+    assert "he said *#@* it" in ass and "HOLY *#@*" in ass and ass.count("*#@*") >= 4
 
 
 def test_spoken_word_groups_never_overlap():
@@ -84,3 +84,25 @@ def test_spoken_word_groups_never_overlap():
     spans = sorted((sec(a), sec(b)) for a, b in re.findall(r"Dialogue: 1,([^,]+),([^,]+),Speech", ass))
     assert len(spans) == 4
     assert all(spans[i][1] <= spans[i + 1][0] + 1e-6 for i in range(len(spans) - 1)), spans
+
+
+def test_headline_is_drawn_with_its_emoji(tmp_path):
+    """The headline is a picture so it can end in a colour emoji; swears are still bleeped."""
+    from PIL import Image
+
+    from clipper import headline
+    if headline._fonts()[1] is None:
+        import pytest
+        pytest.skip("no colour emoji font on this computer")
+    with_emoji = headline.render("Kai went on a date 😭", tmp_path / "a.png")
+    without = headline.render("Kai went on a date", tmp_path / "b.png")
+    assert with_emoji and without and with_emoji[0] > without[0]       # the emoji takes room
+    img = Image.open(tmp_path / "a.png").convert("RGBA")
+    colours = {px[:3] for px in img.getdata() if px[3] == 255 and px[:3] not in ((255, 255, 255),)}
+    assert any(r > 200 and g > 150 and b < 120 for r, g, b in colours)  # the yellow of 😭
+    # a long one wraps onto more lines instead of running off the screen
+    long = headline.render("TheBurntPeanut got hit on by a few older women at the bar in GTA 6 😭", tmp_path / "c.png")
+    assert long[0] <= headline.MAX_WIDTH and long[1] > with_emoji[1]
+    plan = Plan(hook="what the fuck 😭", mood="funny")
+    from clipper.captions import censor
+    assert censor(plan.hook) == "what the *#@* 😭"

@@ -107,6 +107,36 @@ def filter_graph(layout: str, focus_x: float, safe: bool = False, geo: dict | No
     return _filter_graph(layout, focus_x, safe)
 
 
+def with_headline(graph: str, overlay: str | None) -> str:
+    """Put the headline picture (ffmpeg input 1) over the finished frame."""
+    if not overlay:
+        return graph
+    assert graph.endswith("[v]")
+    return graph[:-3] + "[base];" + overlay
+
+
+def write_captions(tmp: Path, plan: Plan, words: list, length: float, layout: str, cfg: VerticalConfig,
+                   geo: dict | None, fade: bool = True) -> tuple[list[str], str | None]:
+    """Write captions.ass into tmp, and the headline as a picture when it can be drawn (so it can end
+    in a colour emoji). Returns the extra ffmpeg inputs and the overlay step for with_headline()."""
+    from .captions import POSITIONS
+    from .headline import render
+    positions = geo["positions"] if geo else POSITIONS.get(layout, POSITIONS["blur"])
+    anchor = 5 if geo else 2
+    size = render(plan.hook, tmp / "headline.png") if plan.hook.strip() else None
+    (tmp / "captions.ass").write_text(
+        build_ass(plan, words, length, layout, cfg.font, positions=positions if geo else None,
+                  hook_anchor=anchor, draw_hook=size is None), encoding="utf-8")
+    if size is None:
+        return [], None
+    w, h = size
+    y = positions[0] - (h if anchor == 2 else h // 2)
+    fade_in = ",fade=in:st=0:d=0.25:alpha=1" if fade else ""
+    overlay = (f"[1:v]format=rgba{fade_in}[hl];"
+               f"[base][hl]overlay=x={(1080 - w) // 2}:y={max(0, y)}:shortest=1:format=auto[v]")
+    return ["-loop", "1", "-framerate", "30", "-i", "headline.png"], overlay
+
+
 def _filter_graph(layout: str, focus_x: float, safe: bool = False) -> str:
     # Safe mode times frames by counting them instead of trusting the video's own clock,
     # which can jump (e.g. around Twitch ad breaks) and make ffmpeg drop most of the video.
@@ -168,12 +198,13 @@ async def _transcribe_with_limit(clip: Path, model: str) -> Transcript:
 
 
 async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x: float,
-                  safe: bool, layout: str | None = None, geo: dict | None = None) -> tuple[bool, str]:
+                  safe: bool, layout: str | None = None, geo: dict | None = None,
+                  extra: tuple[list[str], str | None] = ([], None)) -> tuple[bool, str]:
     audio = ["-af", "asetpts=N/SR/TB"] if safe else []
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        *(["-fflags", "+genpts"] if safe else []), "-i", str(clip.resolve()),
-        "-filter_complex", filter_graph(layout or cfg.layout, focus_x, safe, geo),
+        *(["-fflags", "+genpts"] if safe else []), "-i", str(clip.resolve()), *extra[0],
+        "-filter_complex", with_headline(filter_graph(layout or cfg.layout, focus_x, safe, geo), extra[1]),
         "-map", "[v]", "-map", "0:a?", *audio,
         *PLATFORM_VIDEO, "-preset", cfg.preset, "-crf", str(cfg.crf),
         *PLATFORM_AUDIO, "-movflags", "+faststart", str(out.resolve()),
@@ -203,12 +234,10 @@ async def _render_once(clip: Path, out: Path, plan: Plan, words: list, length: f
         iw, ih = await asyncio.to_thread(probe_size, clip)
         geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x)
     with tempfile.TemporaryDirectory() as tmp:
-        (Path(tmp) / "captions.ass").write_text(
-            build_ass(plan, words, length, layout, cfg.font,
-                      positions=geo["positions"] if geo else None, hook_anchor=5 if geo else 2), encoding="utf-8")
+        extra = write_captions(Path(tmp), plan, words, length, layout, cfg, geo)
         want = probe_video_duration(clip) or length
         for safe in (False, True):
-            ok, err = await _encode(clip, out, tmp, cfg, plan.crop_focus_x, safe, layout=layout, geo=geo)
+            ok, err = await _encode(clip, out, tmp, cfg, plan.crop_focus_x, safe, layout=layout, geo=geo, extra=extra)
             got = probe_video_duration(out) if ok else 0.0
             if ok and got >= want - 1.5:
                 return True

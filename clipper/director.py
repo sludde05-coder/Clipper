@@ -43,15 +43,15 @@ MOOD_WORDS = {
 # Fallback headlines (no AI): several per mood, picked at random so clips don't all read the same.
 # Fallback text when the AI isn't available: several per mood, in a clipper's voice, picked at random.
 HOOKS = {
-    "funny": ["{name} was NOT ready for this", "i can't with {name}", "the way {name} reacted", "{name} please",
-              "this is why we watch {name}", "nobody warn {name}"],
-    "hype": ["{name} really pulled that off", "that was way too clean", "{name} said watch this", "no way that worked",
-             "{name} did NOT miss", "first try too"],
-    "shock": ["wait what just happened", "{name} did NOT see that coming", "nobody was ready for this",
-              "watch {name}'s face", "rewind that", "how did that happen"],
-    "rage": ["{name} is so done", "this is the worst timing ever", "{name} had ONE job", "it all fell apart"],
-    "sad": ["this one hurt", "so close", "{name} will never recover from this", "pain."],
-    "wholesome": ["this made my day", "{name} is too nice for this game", "okay this was sweet", "protect {name} at all costs"],
+    "funny": ["{name} was not ready for this in GTA 6 😭", "{name} really thought that would work 😭",
+              "{name} got humbled in GTA 6 😂", "{name} can't catch a break in GTA 6 😭"],
+    "hype": ["{name} pulled this off first try in GTA 6 🔥", "{name} made this look easy in GTA 6 😳",
+             "{name} did NOT miss in GTA 6 🔥"],
+    "shock": ["{name} did not see that coming in GTA 6 😳", "{name} found out the hard way in GTA 6 💀",
+              "This happens in GTA 6?????"],
+    "rage": ["{name} is so done with GTA 6 😭", "{name} had one job in GTA 6 💀"],
+    "sad": ["{name} was so close in GTA 6 😭", "{name} will never recover from this 💔"],
+    "wholesome": ["{name} is too nice for GTA 6 🥹", "{name} made a friend in GTA 6 🥹"],
 }
 POST_LINES = {
     "funny": ["{name} was not ready for this one in gta 6 😭", "i can't stop watching {name} here in gta 6 😭 who did it better?",
@@ -191,32 +191,41 @@ The images are frames from the clip, labelled with their timestamps. Most are fr
 First work out what actually happened: what the streamer did, said, saw or reacted to, and what makes it
 funny / shocking / impressive. Then write like a real clipper, not like an AI or a news headline.
 
-HOW VIRAL CLIP TEXT SOUNDS
-- Like a viewer texting a friend about what they just watched. Casual, specific, a bit unhinged. lowercase is fine.
-- The best hook is often the streamer's own funniest or most dramatic line, word for word, in quotes:
-  "bro i'm actually done", "WHY IS HE IN MY HOUSE". Use a quote whenever the transcript has a good one.
-- Otherwise react to the moment: he was NOT ready for that / she really thought that would work /
-  the way he just gave up / nobody tell him what's behind him / this is the worst timing ever
-- Or set it up and leave a gap, without spoiling the punchline: POV: you trust the npc / watch his face at the end /
-  he had ONE job
-- CAPS on the one word that carries the emotion (NOT, ONE, WHY), never the whole hook.
-- Be specific to THIS clip: the thing, the person, the place. Never generic.
+HOW THE HEADLINE SOUNDS (the format the biggest clip accounts use)
+It is NOT a description of the video. It's one of these two shapes:
+
+(The examples below are made up, to show the format. Never reuse them.)
+
+1. "<Streamer> <did something>" + one emoji at the end. Past tense, about what happened, like gossip:
+     {name} went on a date in GTA 6 😭
+     {name} got hit on by a few older women 😭
+     {name} tried to rob a bank with a golf club 💀
+     {name} found out you can buy a house in GTA 6 😳
+     {name} got scammed by an NPC 😂
+   Start with the streamer's name exactly as written above.
+
+2. A question or statement about the game itself, the kind that makes people who haven't played stop scrolling.
+   Usually with several question marks or an emoji:
+     You can get a job in GTA 6?????
+     NPCs in GTA 6 remember what you did?????
+     The cops in GTA 6 are actually insane 💀
+
+Pick the shape that fits the clip: shape 1 when it's about what the streamer did, shape 2 when the moment shows off
+something surprising about GTA 6. Write "GTA 6" (capitals) when you mention the game.
+- Specific to THIS clip: the actual thing, person or place. Never generic, never narrating ("He walks into...").
+- Short: about 5-12 words. Sentence case, not all caps.
+- Emoji: exactly one at the end of shape 1 (😭 💀 😂 😳 🤣 are the usual ones; 😭 is the classic for funny).
+  Shape 2 ends in ????? or one emoji.
 - Never use: "chat", "play of the day", "went crazy", "insane moment", "epic", "absolutely", "you won't believe",
   "wild moment", "chaos", "goes silent", "pulls up", "unbelievable", "legendary", "crazy moment".
-  Don't describe the clip like a narrator ("He pulls up the map and...").
-
-Examples of the voice (made up; never reuse them):
-  hook: "i'm not even mad that was clean"     post: "kai really thought the cops wouldn't notice 😭 gta 6 day one and he's already wanted"
-  hook: he was NOT ready for that jump         post: "the way he committed to this 💀 would you have tried it?"
-  hook: nobody tell him what's behind him      post: "lacy spent 10 minutes on this plan and it lasted 4 seconds 😭"
 
 Now write:
-- hook_options: 3 different hooks, each a different style (a quote, a reaction, a setup). Max 8 words each.
-  No hashtags, no emoji (the video can't show them).
+- hook_options: 3 different headlines in those shapes (at least one of each shape when the clip allows it).
+  No hashtags.
 - hook: the strongest of the three, the one that makes someone stop scrolling in the first second.
 {recent}
 - mood: the overall feel of the moment.
-- beats: 0-2 short on-screen texts (max 4 words, no emoji) timed to key moments, e.g. "wait for it" right before
+- beats: 0-2 short on-screen texts (max 4 words, no emoji, they can't be shown there) timed to key moments, e.g. "wait for it" right before
   the payoff, or a one-word reaction ("BRO.") right after. Not about chat, don't repeat the hook. Empty is fine.
 - emphasis: up to 6 words from the transcript worth highlighting (the punchline, names, key words).
 - crop_focus_x: if the video is cropped to a vertical strip, where should its center be so the action stays in frame?
@@ -226,8 +235,8 @@ Now write:
   (😭 💀 🔥 😳 are the usual ones). Then 3-5 hashtags on the same line, lowercase."""
 
 RETRY = ("Your hook \"{hook}\" sounds generic, uses a banned phrase or mentions chat, or reuses a recent opening. "
-         "Write a new set in the voice of a real clipper: specific to this clip, a quote or a reaction. The hook is about "
-         "what the streamer did or said in this moment, without the word \"chat\".")
+         "Write a new set in the clipper format: \"<Streamer> did <specific thing> 😭\" or a question about GTA 6 "
+         "like \"You can get a job in GTA 6?????\". Specific to this clip, without the word \"chat\".")
 
 
 BANNED = ("play of the day", "went crazy", "goes crazy", "insane moment", "epic", "absolutely", "you won't believe",
@@ -240,8 +249,9 @@ def hook_is_weak(hook: str, recent: list[str]) -> bool:
     h = hook.lower().strip()
     if not h or re.search(r"\bchat\b", h) or any(b in h for b in BANNED):
         return True
-    opening = " ".join(h.split()[:2])
-    return any(" ".join(r.lower().split()[:2]) == opening for r in recent[-5:]) and len(h.split()) > 2
+    # Headlines start with the streamer's name, so compare the first three words (name + what they did).
+    opening = " ".join(h.split()[:3])
+    return any(" ".join(r.lower().split()[:3]) == opening for r in recent[-5:]) and len(h.split()) > 3
 
 
 FALLBACK_MODELS = ("claude-opus-5", "claude-sonnet-5-5", "claude-fable-5")
@@ -277,7 +287,7 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
         content.append({"type": "text", "text": f"Frame at t={t:.1f}s"})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}})
     recent = recent or []
-    recent_text = ("  * Recent hooks. Don't reuse their wording, structure or opening words:\n"
+    recent_text = ("  * Recent headlines. Keep the format but don't reuse their wording or the same action:\n"
                    + "\n".join(f"      - {h}" for h in recent[-12:])) if recent else ""
     content.append({"type": "text", "text": PROMPT.format(
         name=meta.get("name") or meta.get("channel"), platform=meta.get("platform"),
