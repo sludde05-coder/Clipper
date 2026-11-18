@@ -57,3 +57,17 @@ def test_stock_phrases_get_rewritten():
     assert hook_is_weak("This might be the play of the day", [])
     assert hook_is_weak("He pulls up the GTA 6 map and goes silent", [])
     assert not hook_is_weak("he was NOT ready for that jump", [])
+
+
+def test_swear_words_are_bleeped_everywhere_on_screen():
+    from clipper.captions import BLEEP, censor
+    assert BLEEP == "*#@*"
+    assert censor("what the fuck!") == "what the *#@*!"
+    assert censor("oh shiiit, MOTHERFUCKER") == "oh *#@*, *#@*"
+    assert censor("that was f***ing crazy") == "that was *#@* crazy"      # already starred by the transcript
+    for fine in ("class pass grass", "assassin", "shiitake", "Scunthorpe", "hit the bass", "cocktail"):
+        assert censor(fine) == fine
+    plan = Plan(hook="he said fuck it", mood="shock", beats=[Beat(3, "HOLY SHIT")])
+    ass = build_ass(plan, words("what the fuck bro"), 10.0)
+    assert "FUCK" not in ass and "SHIT" not in ass
+    assert "HE SAID *#@* IT" in ass and "HOLY *#@*" in ass and ass.count("*#@*") >= 4

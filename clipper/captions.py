@@ -35,9 +35,41 @@ def ass_color(rgb: tuple[int, int, int], alpha: int = 0) -> str:
     return f"&H{alpha:02X}{b:02X}{g:02X}{r:02X}"
 
 
+# Swear words shown on screen are replaced by this.
+BLEEP = "*#@*"
+_SWEARS = re.compile(r"""(?x)
+    \w*f+u+c+k+\w* | f+c?k+ | f+u+k+\w* | wtf | stfu | mf+s? | fml
+  | (?:bull|horse|dip|ape|bat|chicken|holy)?sh+i+t+(?:s|ty|tier|tiest|ting|ted|heads?|shows?|post\w*|bags?|face)?
+  | \w*bitch\w*
+  | cunts?
+  | ass | asses | \w*asshole\w* | (?:dumb|jack|bad|smart|fat|kick|lame)ass\w*
+  | dick | dicks | dickhead\w*
+  | puss(?:y|ies)
+  | cocks? | cocksuck\w*
+  | bastards?
+  | damn\w* | dammit | goddam\w*
+  | piss | pissed | pissing
+  | whores? | sluts?
+  | nigg\w* | fags? | faggots? | retards?
+""")
+_TOKEN = re.compile(r"[A-Za-z][A-Za-z'*]*")
+
+
+def censor(text: str) -> str:
+    """Swear words become *#@* (keeping punctuation): 'what the fuck!' -> 'what the *#@*!'.
+    Words the transcript already starred out ('f***ing') are swapped for *#@* too."""
+    def swap(m: re.Match) -> str:
+        word = m.group(0)
+        core = re.sub(r"'s$", "", word.lower()).replace("'", "")
+        if "*" in word or _SWEARS.fullmatch(core):
+            return BLEEP
+        return word
+    return _TOKEN.sub(swap, text or "")
+
+
 def clean(text: str) -> str:
     # Subtitle renderers draw color emoji as empty boxes, and braces are ASS markup.
-    text = _EMOJI.sub("", text)
+    text = censor(_EMOJI.sub("", text))
     return " ".join(re.sub(r"[{}\\]", "", text).split())
 
 
