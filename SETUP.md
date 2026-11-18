@@ -59,10 +59,12 @@ To make re-rendering possible, each clip's caption-free original is kept out of 
 
 ### Posting
 
-1. In **Posting**, turn on the platforms you use and click **Open … to sign in** for each one. This opens
-   **Clipper's own browser window**: Google Chrome with its own profile called "Clipper". Sign in there once; it
-   remembers you. (It has to be Clipper's own profile: since version 136, Chrome doesn't let programs control the
-   profiles you make in Chrome yourself.) You need Google Chrome installed; without it Clipper falls back to Edge.
+1. In **Posting**, turn on the platforms you use and click **Sign in to all**. A **normal Chrome window** opens with
+   Clipper's own profile called "Clipper". Sign in to TikTok, YouTube and Instagram there ("Continue with Google" works
+   in this window), then **close that window**. Clipper uses those logins from then on.
+   (Clipper needs its own profile: since version 136, Chrome doesn't let programs control the profiles you make in
+   Chrome yourself. And sign-in happens in a normal window because Google blocks signing in from a browser a program
+   is controlling.) You need Google Chrome installed.
 2. In **Clips**, tick the clips you want to post and press **Post selected**.
 3. For each clip and platform, Clipper **puts the video and caption into the upload page** in its browser window.
    On YouTube it also picks "not made for kids", goes through the Next steps and chooses Public.

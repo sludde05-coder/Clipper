@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -90,6 +91,9 @@ class AutoPoster:
                 return self._ctx
             except Exception as e:  # noqa: BLE001
                 last = e
+        if last is not None and any(k in str(last) for k in ("ProcessSingleton", "in use", "already running",
+                                                             "user data directory is already")):
+            raise FillError("the Chrome window you signed in with is still open: close it, then press Fill in again")
         raise FillError("couldn't open Google Chrome for Clipper. Is Chrome installed? "
                         f"Get it from google.com/chrome ({last})")
 
@@ -114,9 +118,20 @@ class AutoPoster:
         await page.bring_to_front()
         return page
 
-    async def open_sign_in(self, platform: str) -> None:
-        page = await self._page(platform)
-        await page.goto(SIGN_IN_URL[platform])
+    async def open_sign_in(self, platforms: list[str]) -> None:
+        """Open the sign-in pages in a NORMAL Chrome window that uses the Clipper profile.
+
+        Google refuses sign-ins in a browser that a program is controlling ("This browser or app
+        may not be secure"), so signing in happens in plain Chrome. The login is saved in the
+        Clipper profile, and the auto-fill window uses that same profile afterwards. Both can't
+        have the profile open at once, so the automated window is closed first."""
+        await self.close()
+        chrome = find_chrome()
+        if chrome is None:
+            raise FillError("Google Chrome isn't installed. Get it from google.com/chrome")
+        self._name_profile()
+        subprocess.Popen([str(chrome), f"--user-data-dir={self.profile_dir}", "--no-first-run",
+                          "--no-default-browser-check", *[SIGN_IN_URL[p] for p in platforms]])
 
     async def close(self) -> None:
         try:
@@ -266,6 +281,23 @@ class AutoPoster:
             raise FillError("the video is in, but the caption box didn't show up: paste the caption yourself")
         await self._replace_text(page, box, captions["caption"])
         return "Check it, then click Share"
+
+
+def find_chrome() -> Path | None:
+    """Where Google Chrome is installed on this computer."""
+    candidates = []
+    if sys.platform == "win32":
+        for var in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            base = os.environ.get(var)
+            if base:
+                candidates.append(Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe")
+    elif sys.platform == "darwin":
+        candidates.append(Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
+    else:
+        import shutil
+        candidates += [Path(p) for p in (shutil.which("google-chrome"), shutil.which("google-chrome-stable"),
+                                         shutil.which("chromium")) if p]
+    return next((c for c in candidates if c.exists()), None)
 
 
 async def _say(status: Status, text: str) -> None:

@@ -304,8 +304,15 @@
     <section class="page" id="page-posting" hidden>
       <h1>Posting</h1>
       <p class="sub">Link the platforms you post to. When you press Post, Clipper goes through each one and fills in the upload
-        page for you in its own browser window, so you only check it and click Post. Sign in to each site there once
-        with the buttons below.</p>
+        page for you in its own Chrome window, so you only check it and click Post.</p>
+      <div class="card" style="margin-bottom:16px">
+        <div class="row" style="justify-content:space-between">
+          <div><b>Sign in once</b><div class="help">Opens a normal Chrome window with Clipper's own profile. Sign in to
+            TikTok, YouTube and Instagram there (Google sign-in works in this window), then <b>close it</b>. Clipper then
+            uses those logins when it fills in the upload pages.</div></div>
+          <button class="btn primary" id="signinall">Sign in to all</button>
+        </div>
+      </div>
       <div id="platforms" class="grid2"></div>
       <div class="card" style="margin-top:16px">
         <div class="row" style="justify-content:space-between">
@@ -850,9 +857,13 @@
       <label class="field"><span>Your account</span><input type="text" data-acc="${p.key}" value="${esc(p.account)}" placeholder="@yourname"></label>
       <label class="field"><span>Extra hashtags</span><input type="text" data-tags="${p.key}" value="${esc(p.tags)}" placeholder="#gta6 #gaming"><div class="help">Added to every ${esc(p.name)} caption.</div></label>
       <button class="btn" data-signin="${p.key}">Open ${esc(p.name.split(" ")[0])} to sign in</button></div>`).join("");
+    $("#signinall").onclick = async () => {
+      const r = await api("/api/open-upload", { platform: "all", signin: true }).catch(e => ({ error: e.message }));
+      toast(r.error ? r.error : "Sign in in the Chrome window that opened, then close it", 6000);
+    };
     $$("[data-signin]").forEach(b => b.onclick = async () => {
       const r = await api("/api/open-upload", { platform: b.dataset.signin, signin: true }).catch(e => ({ error: e.message }));
-      toast(r.where === "clipper" ? "Sign in in Clipper's browser window. It remembers you." : "Opened in your browser");
+      toast(r.where === "clipper" ? "Sign in in the Chrome window that opened, then close it. Clipper remembers you." : "Opened in your browser", 5000);
     });
   }
   $("#saveposting").onclick = async () => {

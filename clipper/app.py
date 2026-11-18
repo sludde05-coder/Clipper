@@ -585,17 +585,19 @@ class ClipperApp:
     async def open_upload(self, request):
         body = await request.json()
         key = body.get("platform")
-        url = SIGN_IN.get(key) if body.get("signin") else (TARGETS[key].url if key in TARGETS else None)
+        url = (SIGN_IN.get(key, "about:blank") if body.get("signin") else
+               (TARGETS[key].url if key in TARGETS else None))
         if not url:
             raise web.HTTPBadRequest(text="unknown platform")
         if body.get("signin") and self.cfg.post.autofill:
-            # Sign in inside Clipper's browser window, where auto-fill happens.
+            # A normal Chrome window with the Clipper profile (Google blocks sign-in in automated ones).
             try:
-                await self.autoposter().open_sign_in(key)
+                await self.autoposter().open_sign_in([key] if key != "all" else self._platforms())
                 return web.json_response({"ok": True, "where": "clipper"})
             except Exception as e:  # noqa: BLE001
                 log.warning("couldn't open Clipper's browser (%s), using your normal browser", e)
-        webbrowser.open(url)
+        for u in ([SIGN_IN[k] for k in self._platforms()] if key == "all" else [url]):
+            webbrowser.open(u)
         return web.json_response({"ok": True, "where": "browser"})
 
     # ------------------------------------------------------------ auto-fill
@@ -631,7 +633,8 @@ class ClipperApp:
             except NeedsSignIn:
                 name = TARGETS[platform].name.split()[0]
                 self.jobs[key] = {"state": "signin", "error": "",
-                                  "message": f"Sign in to {name} in Clipper's browser window, then press Fill in again"}
+                                  "message": f"You're not signed in to {name} in the Clipper profile yet: go to Posting, "
+                                             f"click Sign in, sign in there, close that Chrome window, then press Fill in again"}
             except FillError as e:
                 self.jobs[key] = {"state": "error", "error": str(e), "message": ""}
                 log.warning("auto-fill on %s: %s", TARGETS[platform].name, e)

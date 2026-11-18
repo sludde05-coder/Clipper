@@ -119,3 +119,39 @@ def _fast_first(orig):
     async def first(page, selectors, timeout, state="visible"):
         return await orig(page, selectors, min(timeout, 2), state)
     return staticmethod(first)
+
+
+def test_sign_in_opens_plain_chrome_with_the_clipper_profile(tmp_path, monkeypatch):
+    """Google blocks sign-in in automated browsers, so sign-in uses plain Chrome + the same profile."""
+    launched = []
+    fake_chrome = tmp_path / "chrome.exe"
+    fake_chrome.write_text("")
+    monkeypatch.setattr(autopost, "find_chrome", lambda: fake_chrome)
+    monkeypatch.setattr(autopost.subprocess, "Popen", lambda cmd, **kw: launched.append(cmd))
+    ap = autopost.AutoPoster(tmp_path / "chrome-profile")
+    closed = []
+
+    async def fake_close():
+        closed.append(True)
+    ap.close = fake_close
+    asyncio.run(ap.open_sign_in(["tiktok", "youtube", "instagram"]))
+    cmd = launched[0]
+    assert closed and cmd[0] == str(fake_chrome)
+    assert f"--user-data-dir={tmp_path / 'chrome-profile'}" in cmd
+    assert not any("remote-debugging" in a or "enable-automation" in a for a in cmd)   # a normal Chrome
+    assert [a for a in cmd if a.startswith("https://")] == [autopost.SIGN_IN_URL[k] for k in ("tiktok", "youtube", "instagram")]
+    assert '"Clipper"' in (tmp_path / "chrome-profile" / "Default" / "Preferences").read_text(encoding="utf-8")
+
+
+def test_profile_in_use_gives_a_clear_message(tmp_path, monkeypatch):
+    class FakeChromium:
+        async def launch_persistent_context(self, **kw):
+            raise RuntimeError("Failed to create a ProcessSingleton for your profile directory")
+
+    class FakePW:
+        chromium = FakeChromium()
+
+    ap = autopost.AutoPoster(tmp_path / "chrome-profile")
+    ap._pw = FakePW()
+    with pytest.raises(autopost.FillError, match="still open: close it"):
+        asyncio.run(ap._context())
