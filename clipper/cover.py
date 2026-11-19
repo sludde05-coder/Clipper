@@ -15,7 +15,7 @@ from pathlib import Path
 from .config import VerticalConfig
 from .director import Plan
 from .proc import NO_WINDOW
-from .vertical import (facecam_geometry, filter_graph, probe_duration, probe_size, resolve_layout,
+from .vertical import (WEBCAM_LAYOUTS, facecam_geometry, filter_graph, probe_duration, probe_size, resolve_layout,
                        with_headline, write_captions)
 
 log = logging.getLogger(__name__)
@@ -64,12 +64,12 @@ async def _from_source(source: Path, out: Path, cap: dict, meta: dict, cfg: Vert
                 crop_focus_x=float(cap.get("crop_focus_x", 0.5)), facecam=cap.get("facecam"))
     layout = cap.get("layout") or resolve_layout(cfg.layout, plan.facecam)
     geo = None
-    if layout == "facecam":
+    if layout in WEBCAM_LAYOUTS:
         if not plan.facecam:
             layout = "blur"
         else:
             iw, ih = await asyncio.to_thread(probe_size, source)
-            geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x)
+            geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x, full=layout == "facecam_full")
     with tempfile.TemporaryDirectory() as tmp:
         # The headline fades in over the first quarter second; a picture starts at time 0, so no fade.
         inputs, overlay = write_captions(Path(tmp), plan, [], length, layout, cfg, geo, fade=False)

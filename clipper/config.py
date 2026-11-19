@@ -39,7 +39,8 @@ class ClipConfig:
 @dataclass
 class VerticalConfig:
     enabled: bool = True           # also render a 9:16 captioned version of each clip
-    layout: str = "auto"           # "auto": webcam on top when there is one, else "blur"; or "facecam", "blur", "crop"
+    layout: str = "auto"           # "auto": webcam on top when there is one, else "blur"; or "facecam",
+                                   # "facecam_full" (webcam on top, whole screen below over a blur), "blur", "crop"
     ai_editors: bool = True        # the 5 AI editors (trim, webcam, captions, post text, review); needs ai_captions
     speech_captions: bool = True   # word-by-word captions from Whisper
     whisper_model: str = "small"   # tiny / base / small / medium / large-v3

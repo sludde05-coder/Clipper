@@ -52,7 +52,8 @@ category_id = 0         # set if Kick names the GTA 6 category differently
 [vertical]              # phone version (9:16) with captions, made for every clip
 enabled = true
 layout = "auto"         # "auto": streamer's webcam on top, gameplay below (blurred background if no webcam)
-                        # "facecam", "blur" (whole frame over a blurred background) or "crop" (fill the screen)
+                        # "facecam", "facecam_full" (webcam on top, the whole stream screen below over a blur),
+                        # "blur" (whole frame over a blurred background) or "crop" (fill the screen)
 ai_editors = true       # 5 AI editors: trim, webcam, captions, post text, and a final review
 speech_captions = true  # word-by-word captions of what the streamer says (local Whisper)
 whisper_model = "small" # "base" is faster, "medium" more accurate

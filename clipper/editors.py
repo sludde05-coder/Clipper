@@ -248,7 +248,9 @@ async def review_editor(phone: Path, length: float, hook: str, layout: str, beat
     for t, b64 in frames:
         _image(content, t, b64, "Finished video frame")
     content.append({"type": "text", "text": REVIEW_PROMPT.format(
-        hook=hook, layout={"facecam": "webcam on top, gameplay below", "blur": "whole picture over a blurred background",
+        hook=hook, layout={"facecam": "webcam on top, gameplay below",
+                           "facecam_full": "webcam on top, the whole stream screen below over a blurred background",
+                           "blur": "whole picture over a blurred background",
                            "crop": "gameplay cropped to fill the screen"}.get(layout, layout),
         beats=json.dumps([b.text if hasattr(b, "text") else b for b in beats], ensure_ascii=False) or "none")})
     d = await _ask(model, [{"role": "user", "content": content}], REVIEW_SCHEMA)

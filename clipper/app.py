@@ -72,8 +72,9 @@ SETTINGS = [
     ("detector", "min_rate", "Minimum chat speed", "number", "Messages per second (stops tiny chats from clipping)", None),
     ("detector", "cooldown", "Seconds between clips of one streamer", "number", "", None),
     ("vertical", "layout", "Phone clip layout", "select",
-     "auto: streamer's webcam on top, gameplay below (blurred background if there's no webcam). blur: whole picture over "
-     "a blurred background. crop: fills the screen", ["auto", "blur", "crop"]),
+     "auto: streamer's webcam on top, gameplay below, filling the screen. facecam_full: webcam on top, the whole "
+     "stream screen below over a blurred background (both use blur when there's no webcam). blur: whole picture over "
+     "a blurred background. crop: fills the screen", ["auto", "facecam_full", "blur", "crop"]),
     ("vertical", "ai_editors", "AI editing team", "bool",
      "5 AI editors: trim to the moment, find the webcam, captions, post texts, and a final review (needs AI captions)", None),
     ("vertical", "ai_captions", "AI captions", "bool", "Claude writes the headline and reaction captions", None),
@@ -450,7 +451,7 @@ class ClipperApp:
             plan = Plan(hook=str(body.get("hook", "")).strip(), mood=mood, beats=beats,
                         emphasis=cap.get("emphasis", []), crop_focus_x=float(cap.get("crop_focus_x", 0.5)),
                         post_caption=cap.get("post_caption", ""), source="edited", facecam=cap.get("facecam"))
-            layout = body.get("layout") if body.get("layout") in ("blur", "crop", "facecam") else self.cfg.vertical.layout
+            layout = body.get("layout") if body.get("layout") in ("blur", "crop", "facecam", "facecam_full") else self.cfg.vertical.layout
             vcfg = replace(self.cfg.vertical, layout=layout)
             work = clip.parent.parent / naming.WORK
             work.mkdir(parents=True, exist_ok=True)

@@ -278,7 +278,7 @@
               <label class="field"><span>Colour</span><div class="swatches" id="ed-moods"></div>
                 <div class="help">Used for the highlighted words and reaction captions.</div></label>
               <label class="field"><span>Layout</span>
-                <div class="seg" id="ed-layout"><button data-l="facecam" id="ed-facecam-btn">Webcam on top</button><button data-l="blur">Blurred background</button><button data-l="crop">Fill the screen</button></div></label>
+                <div class="seg" id="ed-layout"><button data-l="facecam" id="ed-facecam-btn">Webcam on top</button><button data-l="facecam_full" id="ed-facecamfull-btn">Webcam + whole screen</button><button data-l="blur">Blurred background</button><button data-l="crop">Fill the screen</button></div></label>
               <div class="field"><span style="display:block;font-weight:600;margin-bottom:6px">Reaction captions</span>
                 <div id="ed-beats"></div>
                 <button class="btn" id="ed-addbeat">+ Add at the video's current time</button>
@@ -676,7 +676,7 @@
     if (d.trim && d.trim.by === "ai") notes.push(`✂️ Trim editor: ${d.trim.why || "cut to the moment"}`);
     if (d.review) notes.push(d.review.ok ? "✅ Review editor: looked good" : `🔁 Review editor fixed: ${(d.review.issues || []).join("; ")}`);
     $("#ed-sub").textContent += notes.length ? "  ·  " + notes.join("  ·  ") : "";
-    $("#ed-facecam-btn").hidden = !d.has_facecam;
+    $("#ed-facecam-btn").hidden = $("#ed-facecamfull-btn").hidden = !d.has_facecam;
     $("#ed-video").src = d.video;
     $("#ed-hook").value = d.hook; hookCount();
     $("#ed-moods").innerHTML = d.moods.map(m => `<button class="swatch ${m === d.mood ? "on" : ""}" data-m="${m}"><i style="background:${MOODCOLORS[m]}"></i>${m}</button>`).join("");

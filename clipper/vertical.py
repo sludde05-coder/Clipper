@@ -61,8 +61,12 @@ def _even(x: float) -> int:
     return max(2, int(round(x / 2)) * 2)
 
 
-def facecam_geometry(box: list, iw: int, ih: int, action_x: float) -> dict:
-    """Where to cut the webcam (top) and the gameplay (bottom) from a source frame of iw x ih."""
+WEBCAM_LAYOUTS = ("facecam", "facecam_full")
+
+
+def facecam_geometry(box: list, iw: int, ih: int, action_x: float, full: bool = False) -> dict:
+    """Where to cut the webcam (top) and the gameplay (bottom) from a source frame of iw x ih.
+    full=True: the bottom shows the whole stream screen, over a blurred copy of it."""
     fx, fy, fw, fh = box[0] * iw, box[1] * ih, box[2] * iw, box[3] * ih
     ht = min(800, max(480, _even(1080 * fh / max(fw, 1))))          # top part height on the 1080x1920 canvas
     a = 1080 / ht
@@ -82,6 +86,13 @@ def facecam_geometry(box: list, iw: int, ih: int, action_x: float) -> dict:
         y = min(max(0, _even(y) if y >= 1 else 0), ih - h)
         return w, h, x, y
 
+    if full:
+        vh = min(hb, _even(1080 * ih / max(iw, 1)))            # the whole screen, full width
+        top = ht + (hb - vh) // 2
+        band = (hb - vh) // 2
+        return {"ht": ht, "hb": hb, "vh": vh, "full": True, "cam": fit(cw, ch, cx, cy),
+                # headline on the seam, spoken words in the blur under the screen, reactions over its middle
+                "positions": (ht, top + vh + max(60, band // 2), top + vh // 2)}
     return {"ht": ht, "hb": hb,
             "cam": fit(cw, ch, cx, cy),
             "game": fit(gw, gh, gx, gy),
@@ -92,10 +103,23 @@ def facecam_geometry(box: list, iw: int, ih: int, action_x: float) -> dict:
 def resolve_layout(layout: str, facecam: list | None) -> str:
     if layout in ("auto", "facecam"):
         return "facecam" if facecam else "blur"
+    if layout == "facecam_full":
+        return "facecam_full" if facecam else "blur"
     return layout if layout in ("blur", "crop") else "blur"
 
 
 def filter_graph(layout: str, focus_x: float, safe: bool = False, geo: dict | None = None) -> str:
+    if layout == "facecam_full" and geo:
+        src = "[0:v]setpts=N/FRAME_RATE/TB," if safe else "[0:v]"
+        cw, ch, cx, cy = geo["cam"]
+        hb = geo["hb"]
+        return (f"{src}split=3[f][g][b];"
+                f"[f]crop={cw}:{ch}:{cx}:{cy},scale=1080:{geo['ht']},setsar=1[top];"
+                f"[b]scale=1080:{hb}:force_original_aspect_ratio=increase,crop=1080:{hb},"
+                "gblur=sigma=40,eq=brightness=-0.12:saturation=1.2[bg];"
+                f"[g]scale=1080:{geo['vh']},setsar=1[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[bot];"
+                "[top][bot]vstack=inputs=2,ass=captions.ass[v]")
     if layout == "facecam" and geo:
         src = "[0:v]setpts=N/FRAME_RATE/TB," if safe else "[0:v]"
         cw, ch, cx, cy = geo["cam"]
@@ -230,9 +254,9 @@ async def _safe(job):
 async def _render_once(clip: Path, out: Path, plan: Plan, words: list, length: float, layout: str,
                        cfg: VerticalConfig) -> bool:
     geo = None
-    if layout == "facecam" and plan.facecam:
+    if layout in WEBCAM_LAYOUTS and plan.facecam:
         iw, ih = await asyncio.to_thread(probe_size, clip)
-        geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x)
+        geo = facecam_geometry(plan.facecam, iw, ih, plan.crop_focus_x, full=layout == "facecam_full")
     with tempfile.TemporaryDirectory() as tmp:
         extra = write_captions(Path(tmp), plan, words, length, layout, cfg, geo)
         want = probe_video_duration(clip) or length

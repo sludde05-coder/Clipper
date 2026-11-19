@@ -147,3 +147,17 @@ def test_cover_is_the_headline_over_the_best_moment(clip, monkeypatch, tmp_path)
     cover.unlink()
     assert asyncio.run(make_cover(phone, cover, meta, VerticalConfig(), source=None)) == cover
     assert v.probe_size(cover) == (1080, 1920)
+
+
+def test_webcam_on_top_with_the_whole_screen_below(clip, monkeypatch):
+    src, meta_path = clip
+    out, _, meta = run(src, meta_path, VerticalConfig(layout="facecam_full"), monkeypatch)
+    assert meta["captions"]["layout"] == "facecam_full" and v.probe_size(out) == (1080, 1920)
+    g = v.facecam_geometry(meta["captions"]["facecam"], 1920, 1080, 0.5, full=True)
+    assert g["vh"] == 608 and g["ht"] + g["hb"] == 1920
+    top = g["ht"] + (g["hb"] - g["vh"]) // 2
+    r, gr, b = pixel(out, 3, 540, 150)                  # webcam on top
+    assert gr > 200 and r < 80 and b < 80, (r, gr, b)
+    r, gr, b = pixel(out, 3, 150, top + 100)            # ...and the whole screen below: its webcam corner shows too
+    assert gr > 200 and r < 80 and b < 80, (r, gr, b)
+    assert v.resolve_layout("facecam_full", None) == "blur"
