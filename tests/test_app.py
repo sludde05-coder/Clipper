@@ -362,3 +362,29 @@ def test_failed_and_other_language_recordings_can_be_deleted(tmp_path):
         assert phone.exists()                                         # finished clips aren't touched
         assert (await c.post("/api/clips/discard", headers=H, json={"which": "everything"})).status == 400
     run(conf, fn)
+
+
+
+def test_stuck_clips_can_be_deleted_but_not_ones_being_made(tmp_path):
+    from clipper import progress
+    conf, phone, *_ = make_library(tmp_path)
+    work = phone.parent.parent / naming.WORK
+    work.mkdir(exist_ok=True)
+    stuck = work / "KaiCenat_2026-11-19_22-00-00_2.mp4"
+    busy = work / "KaiCenat_2026-11-19_22-10-00_3.mp4"
+    for f in (stuck, busy):
+        f.write_bytes(b"x" * 1000)
+    (work / (stuck.stem + ".rendering.mp4")).write_bytes(b"x")
+    (phone.parent.parent / naming.DETAILS / (stuck.stem + ".json")).write_text("{}")
+    progress.step(busy.name, "Rendering the video")          # being made right now
+    try:
+        async def fn(c, app):
+            making = (await (await c.get("/api/clips")).json())["making"]
+            assert {m["name"] for m in making} == {stuck.stem, busy.stem}
+            r = await (await c.post("/api/clips/discard", headers=H, json={"which": "stuck"})).json()
+            assert r["deleted"] == 1 and not stuck.exists() and busy.exists()
+            assert not (work / (stuck.stem + ".rendering.mp4")).exists()
+            assert not (phone.parent.parent / naming.DETAILS / (stuck.stem + ".json")).exists()
+        run(conf, fn)
+    finally:
+        progress.done(busy.name)

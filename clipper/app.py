@@ -114,6 +114,8 @@ class LogBuffer(logging.Handler):
         self.next_id += 1
 
 
+STUCK_MINUTES = 45   # a clip on the same making step this long has stopped
+
 class ClipperApp:
     def __init__(self, config_path: str = "config.toml"):
         self.config_path = config_path
@@ -361,27 +363,43 @@ class ClipperApp:
                                     "number": int(m["n"]) if m else 0})
         return {"making": making, "failed": failed, "other_languages": other}
 
-    async def discard(self, request):
+    async def discard(self, request):  # noqa: C901
         """Delete, for good, the recordings that never became phone clips ("failed") or were set aside for
         another language ("other"), for one streamer or all. They're raw recordings, not finished clips."""
         body = await request.json()
-        folder = {"failed": naming.NOT_CONVERTED, "other": naming.OTHER_LANGUAGES}.get(body.get("which"))
+        folder = {"failed": naming.NOT_CONVERTED, "other": naming.OTHER_LANGUAGES,
+                  "stuck": naming.WORK}.get(body.get("which"))
         if not folder:
-            raise web.HTTPBadRequest(text="which must be failed or other")
+            raise web.HTTPBadRequest(text="which must be failed, other or stuck")
         only = body.get("streamer") or None
+        names = set(body.get("names") or [])          # just these clips (by name), if given
+        # Stuck = waiting in .work with nothing working on it, or on the same step for 45+ minutes.
+        # A clip that's being made right now is left alone.
+        # While leftover clips are being finished (at start-up), the ones without a step are waiting in line.
+        queued = self.jobs.get("__recovery__", {}).get("state") == "running"
+        stuck = {(m["streamer"], m["name"]) for m in self._side_lists()["making"]
+                 if (not m["step"] and not queued) or m["minutes"] >= STUCK_MINUTES}
         count, freed = 0, 0
         for streamer in (self.clips_dir.iterdir() if self.clips_dir.exists() else []):
             if not streamer.is_dir() or streamer.name == DELETED or streamer.name.startswith(".") or \
                     (only and streamer.name != only):
                 continue
             for clip in list((streamer / folder).glob("*.mp4")):
-                for f in (clip, clip.with_suffix(".json"), streamer / naming.DETAILS / (clip.stem + ".json")):
+                if names and clip.stem not in names:
+                    continue
+                extra = []
+                if folder == naming.WORK:
+                    if clip.name.endswith((".phone.mp4", ".rendering.mp4")) or (streamer.name, clip.stem) not in stuck:
+                        continue
+                    extra = [clip.with_name(clip.stem + ".rendering.mp4"), clip.with_name(clip.stem + ".phone.mp4")]
+                for f in (clip, clip.with_suffix(".json"), streamer / naming.DETAILS / (clip.stem + ".json"), *extra):
                     if f.exists():
                         freed += f.stat().st_size
                         f.unlink()
                 count += 1
         log.info("🗑  deleted %d %s recording%s (%d MB)", count,
-                 "unconverted" if body["which"] == "failed" else "other-language", "" if count == 1 else "s", freed // 10**6)
+                 {"failed": "unconverted", "other": "other-language", "stuck": "stuck"}[body["which"]],
+                 "" if count == 1 else "s", freed // 10**6)
         return web.json_response({"ok": True, "deleted": count, "freed_mb": round(freed / 1e6)})
 
     async def retry_failed(self, request):
