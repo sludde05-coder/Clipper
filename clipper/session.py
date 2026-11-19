@@ -180,6 +180,8 @@ async def _finish_clip(out: Path, details: Path, cfg: Config) -> Path | None:
         rendering.unlink(missing_ok=True)
     if not out.exists():
         return  # set aside (another language)
+    if phone is None and progress.was_stopped(out.name):
+        return None  # stopped from the app to be deleted: leave it where it is
     if phone is None:
         kept = naming.move_into(out, folder / naming.NOT_CONVERTED)
         log.warning("kept the original in %s, since the phone version couldn't be made", kept.parent)

@@ -263,9 +263,12 @@ FALLBACK_MODELS = ("claude-opus-5", "claude-sonnet-5-5", "claude-fable-5")
 def _extract_frames(clip: Path, times: list[float], width: int = 640) -> list[tuple[float, str]]:
     frames = []
     for t in times:
-        r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.2f}", "-i", str(clip),
+        try:
+            r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.2f}", "-i", str(clip),
                             "-frames:v", "1", "-vf", f"scale={width}:-2", "-q:v", "5", "-f", "mjpeg", "pipe:1"],
-                           capture_output=True, **NO_WINDOW)
+                               capture_output=True, timeout=60, **NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            continue
         if r.returncode == 0 and r.stdout:
             frames.append((t, base64.b64encode(r.stdout).decode()))
     return frames
@@ -318,22 +321,28 @@ async def claude_plan(clip: Path, meta: dict, words: list[Word], length: float, 
     )
 
 
+AI_TIMEOUT = 75   # seconds one AI request may take (it's tried twice at most), so a slow API never blocks a clip
+
+
 async def _ask(model: str, messages: list[dict], schema: dict | None = None) -> dict | None:
     import anthropic
 
     try:
-        client = anthropic.AsyncAnthropic(timeout=180, max_retries=2)
+        client = anthropic.AsyncAnthropic(timeout=AI_TIMEOUT, max_retries=1)
         # If the model declines, the API retries on a fallback model. Haiku has no
         # server-side fallback, so the option is only sent where it exists.
         fallback = ({"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
                     if model.startswith(FALLBACK_MODELS) else {})
-        resp = await client.beta.messages.create(
+        resp = await asyncio.wait_for(client.beta.messages.create(
             model=model,
             max_tokens=16000,
             output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema or SCHEMA}},
             messages=messages,
             **fallback,
-        )
+        ), AI_TIMEOUT * 2 + 10)
+    except asyncio.TimeoutError:
+        log.warning("Claude took too long to answer: carrying on without it for this step")
+        return None
     except anthropic.AuthenticationError:
         log.warning("no valid Anthropic API key: using rule-based captions (set ANTHROPIC_API_KEY)")
         return None

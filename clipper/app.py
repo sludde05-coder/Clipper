@@ -114,7 +114,7 @@ class LogBuffer(logging.Handler):
         self.next_id += 1
 
 
-STUCK_MINUTES = 45   # a clip on the same making step this long has stopped
+STUCK_MINUTES = 20   # a clip on the same making step this long has stopped
 
 class ClipperApp:
     def __init__(self, config_path: str = "config.toml"):
@@ -378,8 +378,19 @@ class ClipperApp:
         # A clip that's being made right now is left alone.
         # While leftover clips are being finished (at start-up), the ones without a step are waiting in line.
         queued = self.jobs.get("__recovery__", {}).get("state") == "running"
-        stuck = {(m["streamer"], m["name"]) for m in self._side_lists()["making"]
-                 if (not m["step"] and not queued) or m["minutes"] >= STUCK_MINUTES}
+        making = self._side_lists()["making"]
+        stuck = {(m["streamer"], m["name"]) for m in making
+                 if (not m["step"] and not queued) or (m["minutes"] >= STUCK_MINUTES and m["step"] != progress.WAITING)}
+        if names:
+            # Asked for by name (the Delete button on a card): stop it first if it's being made right now.
+            for m in making:
+                if m["name"] in names and (not only or m["streamer"] == only):
+                    stuck.add((m["streamer"], m["name"]))
+                    if progress.stop(m["name"] + ".mp4"):
+                        for _ in range(50):              # let it wind down (up to 10 s)
+                            if not progress.get(m["name"] + ".mp4"):
+                                break
+                            await asyncio.sleep(0.2)
         count, freed = 0, 0
         for streamer in (self.clips_dir.iterdir() if self.clips_dir.exists() else []):
             if not streamer.is_dir() or streamer.name == DELETED or streamer.name.startswith(".") or \
@@ -393,6 +404,8 @@ class ClipperApp:
                     if clip.name.endswith((".phone.mp4", ".rendering.mp4")) or (streamer.name, clip.stem) not in stuck:
                         continue
                     extra = [clip.with_name(clip.stem + ".rendering.mp4"), clip.with_name(clip.stem + ".phone.mp4")]
+                if folder == naming.WORK:
+                    progress.forget(clip.name)
                 for f in (clip, clip.with_suffix(".json"), streamer / naming.DETAILS / (clip.stem + ".json"), *extra):
                     if f.exists():
                         freed += f.stat().st_size

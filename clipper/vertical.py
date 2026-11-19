@@ -29,7 +29,7 @@ _slots: asyncio.Semaphore | None = None
 
 def probe_duration(path: Path) -> float:
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                       capture_output=True, text=True, **NO_WINDOW)
+                       capture_output=True, text=True, timeout=60, **NO_WINDOW)
     return float(r.stdout.strip() or 0)
 
 
@@ -38,7 +38,7 @@ def probe_video_duration(path: Path) -> float:
     sound runs the full time, which is how a "1-second" clip can still claim to be 50 s."""
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                         "stream=duration:format=duration", "-of", "json", str(path)],
-                       capture_output=True, text=True, **NO_WINDOW)
+                       capture_output=True, text=True, timeout=60, **NO_WINDOW)
     try:
         info = json.loads(r.stdout or "{}")
         streams = info.get("streams") or [{}]
@@ -49,7 +49,7 @@ def probe_video_duration(path: Path) -> float:
 
 def probe_size(path: Path) -> tuple[int, int]:
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-                        "-of", "csv=p=0", str(path)], capture_output=True, text=True, **NO_WINDOW)
+                        "-of", "csv=p=0", str(path)], capture_output=True, text=True, timeout=60, **NO_WINDOW)
     try:
         w, h = (int(x) for x in r.stdout.strip().split(",")[:2])
         return w, h
@@ -239,13 +239,23 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         proc.kill()
         await proc.wait()
         return False, f"rendering took over {ENCODE_TIMEOUT // 60} minutes and was stopped"
+    except asyncio.CancelledError:      # stopped from the app: don't leave ffmpeg running
+        proc.kill()
+        raise
     return proc.returncode == 0, err.decode(errors="replace").strip()
 
 
-async def _safe(job):
-    """Run one editor; if it fails in an unexpected way, carry on without it."""
+AI_STAGE_LIMIT = 240   # seconds one AI editor may take in all (incl. a retry); then the clip goes on without it
+
+
+async def _safe(job, limit: float | None = None):
+    """Run one editor with a time limit; if it fails or takes too long, carry on without it."""
+    limit = limit or AI_STAGE_LIMIT
     try:
-        return await job
+        return await asyncio.wait_for(job, limit)
+    except asyncio.TimeoutError:
+        log.warning("an AI editor took over %d minutes; carrying on without it", limit // 60)
+        return None
     except Exception as e:  # noqa: BLE001
         log.warning("an AI editor failed (%s: %s); carrying on without it", type(e).__name__, e)
         return None
@@ -282,7 +292,15 @@ async def _cut(clip: Path, start: float, end: float) -> bool:
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp),
         stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
-    _, err = await proc.communicate()
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), ENCODE_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        err = b"cutting took too long"
+    except asyncio.CancelledError:
+        proc.kill()
+        raise
     if proc.returncode != 0 or probe_video_duration(tmp) < (end - start) * 0.8:
         tmp.unlink(missing_ok=True)
         log.warning("couldn't cut %s to the moment (%s); keeping the whole recording", clip.name,
@@ -310,7 +328,7 @@ def needs_upgrade(clip: Path) -> bool:
     """Phone clips made before the upload-safe settings (level 4.0, colours left unknown)."""
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                         "stream=level,color_primaries", "-of", "json", str(clip)],
-                       capture_output=True, text=True, **NO_WINDOW)
+                       capture_output=True, text=True, timeout=60, **NO_WINDOW)
     try:
         s = (json.loads(r.stdout or "{}").get("streams") or [{}])[0]
     except ValueError:
@@ -361,11 +379,25 @@ def set_aside(clip: Path, meta_path: Path | None = None, dest: Path | None = Non
 
 async def render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None, **kw) -> Path | None:
     """Make the phone version of a clip (see _render_vertical). Its "current step" is always
-    cleared afterwards, so the app never shows a finished or failed clip as still in progress."""
+    cleared afterwards, so the app never shows a finished or failed clip as still in progress.
+    The work runs as its own task, so Delete in the app can stop it (then this returns None)."""
+    task = asyncio.ensure_future(_render_vertical(clip, cfg, out, **kw))
+    progress.attach(clip.name, task)
     try:
-        return await _render_vertical(clip, cfg, out, **kw)
+        return await task
+    except asyncio.CancelledError:
+        if progress.was_stopped(clip.name) and not _current_cancelling():
+            log.info("⏹ stopped making %s", clip.name)
+            return None
+        raise
     finally:
         progress.done(clip.name)
+
+
+def _current_cancelling() -> bool:
+    """Is the task running this code itself being cancelled (e.g. the app is closing)?"""
+    me = asyncio.current_task()
+    return bool(me and getattr(me, "cancelling", lambda: 0)())
 
 
 async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = None,
@@ -385,6 +417,7 @@ async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = N
     global _slots
     if _slots is None:
         _slots = asyncio.Semaphore(max(1, cfg.max_parallel))
+    progress.step(clip.name, progress.WAITING)
     async with _slots:  # transcription + encoding are CPU heavy; don't run 10 at once
         meta_path = meta_path or clip.with_suffix(".json")
         meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
@@ -407,7 +440,7 @@ async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = N
             if use_ai:
                 progress.step(clip.name, "Trim and webcam editors are watching the clip")
                 trim, face = await asyncio.gather(_safe(trim_editor(clip, meta, words, length, cfg.ai_model)),
-                                                  _safe(facecam_editor(clip, length, cfg.ai_model)))
+                                                  _safe(facecam_editor(clip, length, cfg.ai_model)))  # time-limited in _safe
             if trim is None and trim_window:
                 offset = float(meta.get("explosion_offset", length - trim_window[1]))
                 trim = default_trim(offset, length, *trim_window)
@@ -430,7 +463,7 @@ async def _render_vertical(clip: Path, cfg: VerticalConfig, out: Path | None = N
                     plan, post = await asyncio.gather(_safe(captions_job), _safe(post_editor(
                         meta, "", trim.why if trim else "", words, cfg.ai_model)))
                 else:
-                    plan = await captions_job
+                    plan = await _safe(captions_job)
             plan = plan or rule_plan(meta, words)
             if face:
                 plan.facecam, plan.crop_focus_x = face[0], face[1]

@@ -623,13 +623,16 @@
     const list = visible();
     const mine = x => !current || x.streamer === current;
     const queued = !!(state.jobs || {}).__recovery__;   // finishing leftover clips: the rest wait in line
-    const isStuck = m => (!m.step && !queued) || m.minutes >= 45;
+    const isStuck = m => (!m.step && !queued) || (m.minutes >= 20 && m.step !== "Waiting for a free spot");
     const makingCards = making.filter(mine).map(m => `<div class="clipcard" style="cursor:default">
         <div class="thumb" style="display:grid;place-items:center;background:var(--panel2)">
           ${isStuck(m)
             ? `<div style="text-align:center;color:var(--muted);font-weight:600;padding:10px">⏸ Stuck<br><span style="font-weight:400;font-size:13px">Nothing is working on it</span><br><br>
                  <button class="btn danger" data-delstuck="${esc(m.name)}" data-streamer="${esc(m.streamer)}">Delete</button></div>`
-            : `<div style="text-align:center;color:var(--muted);font-weight:600"><span class="spin"></span><br><br>Making the<br>phone clip…</div>`}</div>
+            : `<div style="text-align:center;color:var(--muted);font-weight:600;padding:10px"><span class="spin"></span><br><br>${
+                 m.step === "Waiting for a free spot" ? "Waiting for a<br>free spot…" : "Making the<br>phone clip…"}
+                 ${m.step && m.step !== "Waiting for a free spot" ? `<div style="font-weight:400;font-size:12px;margin-top:6px">${esc(m.step)} · ${m.minutes} min</div>` : ""}
+                 <br><button class="btn ghost" data-delstuck="${esc(m.name)}" data-streamer="${esc(m.streamer)}" data-busy="1">Stop &amp; delete</button></div>`}</div>
         <div class="info"><div class="hook">New clip</div>
           <div class="meta">${esc(m.streamer)} · ${esc(m.date)} ${esc(m.time)} · #${m.number}</div></div></div>`).join("");
     if (!clips.length && !makingCards) {
@@ -647,7 +650,9 @@
           <div class="meta">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)} · #${c.number}</div></div></div>`).join("");
     }
     $$("#cards [data-delstuck]").forEach(b => b.onclick = async () => {
-      if (!confirm("Delete this stuck clip for good? This can't be undone.")) return;
+      if (!confirm(b.dataset.busy ? "Stop making this clip and delete it for good? This can't be undone."
+                                  : "Delete this stuck clip for good? This can't be undone.")) return;
+      b.disabled = true; b.textContent = "Stopping…";
       await api("/api/clips/discard", { which: "stuck", streamer: b.dataset.streamer, names: [b.dataset.delstuck] });
       toast("Deleted"); loadClips();
     });
@@ -668,7 +673,7 @@
     const mine = x => !current || x.streamer === current;
     const f = failed.filter(mine), o = otherLang.filter(mine);
     const queued = !!(state.jobs || {}).__recovery__;
-    const s = making.filter(mine).filter(m => (!m.step && !queued) || m.minutes >= 45);
+    const s = making.filter(mine).filter(m => (!m.step && !queued) || (m.minutes >= 20 && m.step !== "Waiting for a free spot"));
     let html = "";
     if (s.length) html += `<div class="note" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
         <span style="flex:1">⏸ ${s.length > 1 ? s.length + " clips are" : "1 clip is"} stuck: saved, but nothing is turning ${s.length > 1 ? "them" : "it"} into a phone clip.</span>

@@ -388,3 +388,44 @@ def test_stuck_clips_can_be_deleted_but_not_ones_being_made(tmp_path):
         run(conf, fn)
     finally:
         progress.done(busy.name)
+
+
+def test_a_hanging_ai_editor_doesnt_block_the_clip(monkeypatch):
+    import clipper.vertical as v
+
+    async def forever():
+        await asyncio.sleep(3600)
+    monkeypatch.setattr(v, "AI_STAGE_LIMIT", 0.3)
+    assert asyncio.run(v._safe(forever())) is None          # gave up after the limit, the clip goes on
+
+
+def test_a_clip_being_made_can_be_stopped_and_deleted(tmp_path, monkeypatch):
+    import clipper.vertical as v
+    from clipper import progress
+    from clipper.session import finish_clip
+    conf, phone, det, src = make_library(tmp_path)
+    work = phone.parent.parent / naming.WORK
+    work.mkdir(exist_ok=True)
+    clip = work / "KaiCenat_2026-11-19_22-50-58_2.mp4"
+    clip.write_bytes(src.read_bytes())
+    details = phone.parent.parent / naming.DETAILS / (clip.stem + ".json")
+    details.write_text(det.read_text())
+
+    async def hangs(*a, **k):                                   # e.g. a stuck AI or download
+        await asyncio.sleep(3600)
+    monkeypatch.setattr(v, "_transcribe_with_limit", hangs)
+
+    async def fn(c, app):
+        job = asyncio.create_task(finish_clip(clip, details, app.cfg))
+        for _ in range(50):
+            await asyncio.sleep(0.1)
+            if (progress.get(clip.name) or ("",))[0] not in ("", progress.WAITING):
+                break
+        making = (await (await c.get("/api/clips")).json())["making"]
+        assert [m["name"] for m in making] == [clip.stem] and making[0]["step"]
+        r = await (await c.post("/api/clips/discard", headers=H,
+                                json={"which": "stuck", "streamer": "KaiCenat", "names": [clip.stem]})).json()
+        assert r["deleted"] == 1 and not clip.exists() and not details.exists()
+        assert await asyncio.wait_for(job, 5) is None           # the work stopped, nothing left running
+        assert not (phone.parent.parent / naming.NOT_CONVERTED / clip.name).exists()
+    run(conf, fn)
