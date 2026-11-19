@@ -811,6 +811,14 @@ class ClipperApp:
 
     # ------------------------------------------------------------ scheduled posts
 
+    async def phone_qr(self, request):
+        """The QR code that connects the phone app (it holds the phone key, so only shown in this window)."""
+        if not self.phone:
+            raise web.HTTPNotFound(text="the phone app is off")
+        from .phone import qr_svg
+        return web.Response(body=qr_svg(self.phone.phone_url), content_type="image/svg+xml",
+                            headers={"Cache-Control": "no-store"})
+
     async def schedule_list(self, request):
         from . import schedule
         items = []
@@ -1060,6 +1068,7 @@ class ClipperApp:
         r.add_post("/api/compilation", self.compilation)
         r.add_get("/api/compilation/plan", self.compilation_plan)
         r.add_get("/api/schedule", self.schedule_list)
+        r.add_get("/api/phone-qr.svg", self.phone_qr)
         r.add_post("/api/schedule/cancel", self.schedule_cancel)
         r.add_post("/api/clip/delete", self.delete_clip)
         r.add_post("/api/clips/retry", self.retry_failed)
