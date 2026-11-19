@@ -127,6 +127,24 @@ def run_checks(cfg: Config, interactive: bool = True) -> int:
     if not found_any:
         problems += 1
         _say(BAD, "No working Twitch, YouTube or Kick key: the top streams can't be found", "menu option 6")
+    else:
+        # Keys working isn't the same as streams being found: ask each platform for the game's live streams.
+        import asyncio
+        from .discovery import platform_report
+        try:
+            report = asyncio.run(platform_report(cfg))
+        except Exception as e:  # noqa: BLE001
+            report = []
+            _say(WARN, f"Couldn't look for live streams ({e})")
+        game = cfg.discovery.game
+        for name, n, detail in report:
+            if n is None:
+                problems += 1
+                _say(BAD, f"{name}: looking for {game} streams failed: {detail}")
+            elif n == 0:
+                _say(WARN, f"{name}: no live {game} streams found in your languages right now")
+            else:
+                _say(OK, f"{name}: {n} live {game} stream{'s' if n != 1 else ''} found ({detail})")
 
     # What recent clips actually got
     print()

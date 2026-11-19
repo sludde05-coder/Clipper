@@ -110,3 +110,60 @@ def test_blocked_streamers_are_skipped_on_every_platform():
     top = asyncio.run(Discovery(cfg, FakeSession()).top_streams())
     # en1 (9000 viewers) is blocked, so the next two biggest take the top 2
     assert [t.channel for t in top] == ["es1", "ytEN"]
+
+
+
+class KickV2Session(FakeSession):
+    """Kick's current API: v1 is retired (404); v2 names fields differently."""
+    def __init__(self, category_name="Grand Theft Auto VI"):
+        super().__init__()
+        self.category_name = category_name
+
+    def get(self, url, params=None, **k):
+        self.calls.append((url, params))
+        if "/public/v1/" in url:
+            r = FakeResp({"message": "Not Found"})
+            r.status = 404
+
+            async def text():
+                return "Not Found"
+            r.text = text
+            return r
+        if url.endswith("/v2/categories"):
+            return FakeResp({"data": [{"id": 11, "name": "Grand Theft Auto V"}, {"id": 99, "name": self.category_name}]})
+        if url.endswith("/v2/livestreams"):
+            cat = {"id": 99, "name": self.category_name}
+            return FakeResp({"data": [
+                {"broadcaster_user": {"username": "AdinRoss"}, "channel": {"slug": "adinross"}, "language_code": "en",
+                 "title": "GTA 6 DAY 1", "viewer_count": 52000, "category": cat},
+                {"broadcaster_user": {"username": "Wrong"}, "channel": {"slug": "wrong"}, "language_code": "en",
+                 "title": "gta 5 rp", "viewer_count": 90000, "category": {"id": 11, "name": "Grand Theft Auto V"}},
+                {"broadcaster_user": {"username": "Turk"}, "channel": {"slug": "turk"}, "language_code": "tr",
+                 "title": "GTA 6", "viewer_count": 30000, "category": cat},
+            ], "pagination": {"next_cursor": ""}})
+        return super().get(url, params, **k)
+
+
+def kick_only(session):
+    cfg = Config()
+    cfg.discovery.platforms = ["kick"]
+    cfg.creds.kick_client_id = cfg.creds.kick_client_secret = "x"
+    return asyncio.run(Discovery(cfg, session).top_streams())
+
+
+def test_kick_uses_the_current_api():
+    s = KickV2Session()
+    top = kick_only(s)
+    assert [(t.channel, t.viewers, t.display_name) for t in top] == [("adinross", 52000, "AdinRoss")]
+    assert not any("/v1/" in u for u, _ in s.calls)          # v2 answered, so the retired v1 isn't used
+    assert ("category_id", "99") in s.calls[-1][1]
+
+
+def test_kick_category_named_differently_still_matches():
+    assert [t.channel for t in kick_only(KickV2Session("GTA VI"))] == ["adinross"]
+
+
+def test_old_kick_api_still_works_as_a_fallback():
+    s = FakeSession()          # answers only the old v1 shapes at the paths the v2 calls also end with
+    top = kick_only(s)
+    assert [t.channel for t in top] == ["kicken"]

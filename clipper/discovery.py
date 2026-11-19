@@ -4,7 +4,8 @@
   YouTube – Data API search for live videos matching the search terms, then
             concurrent viewer counts. Each search costs 100 of the default
             10,000 daily quota units, hence the slower refresh.
-  Kick    – Public API, livestreams in the game's category sorted by viewers.
+  Kick    – Public API (v2; the older v1 endpoints are only a fallback since Kick
+            retired them), livestreams in the game's category, biggest first.
 
 Only streams in the configured languages are kept (default: English). Twitch and
 Kick label each stream's language; YouTube often doesn't, so there the title
@@ -26,6 +27,24 @@ from .models import Stream, parse_target
 
 log = logging.getLogger(__name__)
 APP_UA = {"User-Agent": "Clipper/1.0 (+https://github.com/sludde05-coder/clipper)"}
+
+
+KICK_API = "https://api.kick.com/public"
+_ROMAN = {"vi": "6", "v": "5", "iv": "4"}
+
+
+def game_key(name: str) -> str:
+    """A game name boiled down for matching: 'Grand Theft Auto VI', 'GTA VI' and 'GTA 6' -> 'gta6'."""
+    k = re.sub(r"[^a-z0-9]", "", (name or "").lower()).replace("grandtheftauto", "gta")
+    if k.startswith("gta") and k[3:] in _ROMAN:
+        k = "gta" + _ROMAN[k[3:]]
+    return k
+
+
+class KickError(Exception):
+    def __init__(self, status: int, text: str):
+        super().__init__(f"Kick said {status}: {text}" if text else f"Kick said {status}")
+        self.status = status
 
 
 _AFFIX = re.compile(r"^(ttv|yt)+|(live|tv|ttv|yt|official|irl)+$")
@@ -83,11 +102,14 @@ class Discovery:
     async def top_streams(self) -> list[Stream]:
         d = self.cfg.discovery
         found: list[Stream] = []
+        counts: dict[str, int] = {}
         for platform, fn in (("twitch", self._twitch), ("youtube", self._youtube), ("kick", self._kick)):
             if platform not in d.platforms:
                 continue
             try:
-                found += await fn()
+                got = await fn()
+                counts[platform] = len(got)
+                found += got
             except Exception as e:  # noqa: BLE001
                 log.warning("%s discovery failed: %s", platform, e)
         best: dict[str, Stream] = {}
@@ -97,9 +119,25 @@ class Discovery:
         blocked = {name_key(b) for b in d.blocked if name_key(b)}
         allowed = [s for s in best.values() if person_key(s) not in blocked and name_key(s.display_name) not in blocked]
         ranked = sorted(one_per_streamer(allowed), key=lambda s: s.viewers, reverse=True)[: d.top_n]
+        self._report(counts, found, ranked)
         pinned = [parse_target(t) for t in d.always_track]
         keys = {s.key for s in ranked}
         return ranked + [p for p in pinned if p.key not in keys]
+
+    def _report(self, counts: dict[str, int], found: list[Stream], ranked: list[Stream]) -> None:
+        """Say what each platform found, and why a platform's streams didn't make the top (if they didn't)."""
+        summary = ", ".join(f"{p.capitalize()} {n}" for p, n in counts.items())
+        if summary and summary != getattr(self, "_last_summary", None):
+            self._last_summary = summary
+            log.info("🔎 live %s streams found: %s", self.cfg.discovery.game, summary)
+        if counts.get("kick") and ranked and not any(s.platform == "kick" for s in ranked):
+            biggest = max((s for s in found if s.platform == "kick"), key=lambda s: s.viewers)
+            note = (f"Kick's biggest {self.cfg.discovery.game} stream ({biggest.display_name or biggest.channel}, "
+                    f"{biggest.viewers:,} viewers) is smaller than the top {len(ranked)} "
+                    f"(smallest there: {ranked[-1].viewers:,})")
+            if note != getattr(self, "_last_kick_note", None):
+                self._last_kick_note = note
+                log.info("ℹ️  %s, so no Kick streams are clipped right now", note)
 
     # ---------- Twitch ----------
     async def _twitch_headers(self) -> dict[str, str] | None:
@@ -202,36 +240,101 @@ class Discovery:
             self._kick_token = (j["access_token"], time.time() + j.get("expires_in", 3600))
         return {**APP_UA, "Authorization": f"Bearer {self._kick_token[0]}", "Accept": "application/json"}
 
+    async def _kick_get(self, path: str, params, headers: dict) -> dict:
+        async with self.s.get(f"{KICK_API}{path}", params=params, headers=headers) as r:
+            status = getattr(r, "status", 200)
+            if status >= 400:
+                try:
+                    text = (await r.text())[:160]
+                except Exception:  # noqa: BLE001
+                    text = ""
+                raise KickError(status, " ".join(text.split()))
+            return await r.json(content_type=None) or {}
+
+    def _kick_wanted(self) -> set[str]:
+        d = self.cfg.discovery
+        return {k for k in (game_key(n) for n in [d.game, *d.search_terms]) if k}
+
+    async def _kick_category(self, h: dict) -> int | None:
+        """The game's category id on Kick: by name (v2), by search (old v1), or from a live stream in it."""
+        d = self.cfg.discovery
+        want, names = self._kick_wanted(), [d.game, *d.search_terms]
+        pick = lambda cats: next((c for c in cats if game_key(c.get("name", "")) in want), None)  # noqa: E731
+        tries = [("/v2/categories", [("name", ",".join(names)), ("limit", "100")])]
+        tries += [("/v1/categories", {"q": n}) for n in names]
+        errors = []
+        for path, params in tries:
+            try:
+                match = pick((await self._kick_get(path, params, h)).get("data") or [])
+            except KickError as e:
+                errors.append(str(e))
+                continue
+            if match:
+                return int(match["id"])
+        # Last resort: the biggest live streams on Kick say which category they're in.
+        try:
+            live = (await self._kick_get("/v2/livestreams", [("limit", "1000")], h)).get("data") or []
+            cat = next((s["category"] for s in live if game_key((s.get("category") or {}).get("name", "")) in want), None)
+            if cat and cat.get("id"):
+                return int(cat["id"])
+        except KickError as e:
+            errors.append(str(e))
+        self._warn_once("kick-cat", f"Kick has no category named {d.game!r} yet, or Kick's API didn't answer"
+                        f"{' (' + errors[-1] + ')' if errors else ''}. Set [kick] category_id in config.toml to override")
+        return None
+
     async def _kick(self) -> list[Stream]:
         h = await self._kick_headers()
         if not h:
             return []
-        api = "https://api.kick.com/public/v1"
         langs = self.cfg.discovery.languages
         if not self._kick_category_id:
-            want = {self.cfg.discovery.game.lower(), *(t.lower() for t in self.cfg.discovery.search_terms)}
-            async with self.s.get(f"{api}/categories", params={"q": self.cfg.discovery.game}, headers=h) as r:
-                r.raise_for_status()
-                cats = (await r.json()).get("data", [])
-            match = next((c for c in cats if c.get("name", "").lower() in want), None)
-            if not match:
-                self._warn_once("kick-cat", f"Kick has no category named {self.cfg.discovery.game!r} yet "
-                                "(set [kick] category_id to override)")
+            self._kick_category_id = await self._kick_category(h)
+            if not self._kick_category_id:
                 return []
-            self._kick_category_id = int(match["id"])
-        async with self.s.get(f"{api}/livestreams", params={
-            "category_id": self._kick_category_id, "sort": "viewer_count", "limit": 100}, headers=h) as r:
-            r.raise_for_status()
-            data = (await r.json()).get("data", [])
+            log.info("Kick: %s is category %s", self.cfg.discovery.game, self._kick_category_id)
+        try:
+            data = (await self._kick_get("/v2/livestreams", [("category_id", str(self._kick_category_id)),
+                                                             ("limit", "1000")], h)).get("data") or []
+        except KickError as e:
+            if e.status not in (400, 404, 410):
+                raise
+            data = (await self._kick_get("/v1/livestreams", {"category_id": self._kick_category_id,
+                                                             "sort": "viewer_count", "limit": 100}, h)).get("data") or []
+        want = self._kick_wanted()
         out = []
         for s in data:
-            if matches_language(s.get("language"), langs) is False:
+            cat = (s.get("category") or {}).get("name")
+            if cat and game_key(cat) not in want:
                 continue
-            if matches_language(s.get("language"), langs) is None and "en" in langs \
-                    and looks_non_english(s.get("stream_title", "")):
+            lang = s.get("language") or s.get("language_code")
+            title = s.get("stream_title") or s.get("title") or ""
+            if matches_language(lang, langs) is False:
                 continue
-            slug = s.get("slug") or (s.get("channel") or {}).get("slug")
+            if matches_language(lang, langs) is None and "en" in langs and looks_non_english(title):
+                continue
+            user = s.get("broadcaster_user") or {}
+            slug = s.get("slug") or (s.get("channel") or {}).get("slug") or user.get("username")
             if slug:
                 out.append(Stream("kick", slug.lower(), f"https://kick.com/{slug}",
-                                  int(s.get("viewer_count", 0)), s.get("stream_title", ""), slug))
-        return out
+                                  int(s.get("viewer_count") or 0), title, user.get("username") or slug))
+        return sorted(out, key=lambda st: st.viewers, reverse=True)
+
+
+async def platform_report(cfg: Config) -> list[tuple[str, int | None, str]]:
+    """For the Check tab: how many live streams of the game each platform finds right now.
+    YouTube is left out: each search uses a good part of its small daily quota."""
+    out = []
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as s:
+        disc = Discovery(cfg, s)
+        for name, fn, have in (("Twitch", disc._twitch, cfg.creds.twitch_client_id),
+                               ("Kick", disc._kick, cfg.creds.kick_client_id)):
+            if not have:
+                continue
+            try:
+                got = await fn()
+                top = max(got, key=lambda st: st.viewers) if got else None
+                out.append((name, len(got), f"biggest: {top.display_name or top.channel}, {top.viewers:,} viewers" if top else ""))
+            except Exception as e:  # noqa: BLE001
+                out.append((name, None, str(e)[:200]))
+    return out
