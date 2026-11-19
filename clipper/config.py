@@ -13,6 +13,7 @@ class DiscoveryConfig:
     game: str = "Grand Theft Auto VI"
     search_terms: list[str] = field(default_factory=lambda: ["GTA 6", "GTA VI", "Grand Theft Auto VI"])
     top_n: int = 10
+    kick_spots: int = 2            # of those, always the N biggest Kick streams (Kick streams are often smaller)
     min_viewers: int = 500
     platforms: list[str] = field(default_factory=lambda: ["twitch", "youtube", "kick"])
     refresh_seconds: int = 300

@@ -93,6 +93,8 @@ class Discovery:
         self._kick_category_id: int | None = cfg.creds.kick_category_id or None
         self._yt_cache: tuple[float, list[Stream]] = (0.0, [])
         self._warned: set[str] = set()
+        # What each platform found last time, for the app: {platform: {"found", "in_top", "biggest", "error"}}
+        self.status: dict[str, dict] = {}
 
     def _warn_once(self, key: str, msg: str) -> None:
         if key not in self._warned:
@@ -103,22 +105,41 @@ class Discovery:
         d = self.cfg.discovery
         found: list[Stream] = []
         counts: dict[str, int] = {}
+        status: dict[str, dict] = {}
+        c = self.cfg.creds
+        has_key = {"twitch": bool(c.twitch_client_id and c.twitch_client_secret), "youtube": bool(c.youtube_api_key),
+                   "kick": bool(c.kick_client_id and c.kick_client_secret)}
         for platform, fn in (("twitch", self._twitch), ("youtube", self._youtube), ("kick", self._kick)):
             if platform not in d.platforms:
+                continue
+            if not has_key[platform]:
+                status[platform] = {"error": "no key"}
                 continue
             try:
                 got = await fn()
                 counts[platform] = len(got)
                 found += got
+                top = max(got, key=lambda s: s.viewers) if got else None
+                status[platform] = {"found": len(got), "error": None,
+                                    "biggest": [top.display_name or top.channel, top.viewers] if top else None}
             except Exception as e:  # noqa: BLE001
                 log.warning("%s discovery failed: %s", platform, e)
+                status[platform] = {"error": str(e)[:200]}
         best: dict[str, Stream] = {}
         for st in found:
             if st.viewers >= d.min_viewers and st.viewers > best.get(st.key, Stream("", "", "")).viewers:
                 best[st.key] = st
         blocked = {name_key(b) for b in d.blocked if name_key(b)}
         allowed = [s for s in best.values() if person_key(s) not in blocked and name_key(s.display_name) not in blocked]
-        ranked = sorted(one_per_streamer(allowed), key=lambda s: s.viewers, reverse=True)[: d.top_n]
+        everyone = sorted(one_per_streamer(allowed), key=lambda s: s.viewers, reverse=True)
+        # Kick streams are often smaller than Twitch's, so a few spots are kept for the biggest ones.
+        kept = [s for s in everyone if s.platform == "kick"][: max(0, min(d.kick_spots, d.top_n))]
+        rest = [s for s in everyone if s not in kept][: d.top_n - len(kept)]
+        ranked = sorted(kept + rest, key=lambda s: s.viewers, reverse=True)
+        for p, st in status.items():
+            if "found" in st:
+                st["in_top"] = sum(1 for s in ranked if s.platform == p)
+        self.status = status
         self._report(counts, found, ranked)
         pinned = [parse_target(t) for t in d.always_track]
         keys = {s.key for s in ranked}
@@ -302,6 +323,15 @@ class Discovery:
             data = (await self._kick_get("/v1/livestreams", {"category_id": self._kick_category_id,
                                                              "sort": "viewer_count", "limit": 100}, h)).get("data") or []
         want = self._kick_wanted()
+        if not data:
+            # Nothing in that category: maybe the id is wrong. Look through Kick's biggest live streams instead
+            # and keep the ones playing the game (and remember its real category id).
+            live = (await self._kick_get("/v2/livestreams", [("limit", "1000")], h)).get("data") or []
+            data = [s for s in live if game_key((s.get("category") or {}).get("name", "")) in want]
+            if data and data[0]["category"].get("id") and not self.cfg.creds.kick_category_id:
+                self._kick_category_id = int(data[0]["category"]["id"])
+            log.info("Kick: nothing came back for category %s; found %d %s streams among Kick's biggest",
+                     self._kick_category_id, len(data), self.cfg.discovery.game)
         out = []
         for s in data:
             cat = (s.get("category") or {}).get("name")

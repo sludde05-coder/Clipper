@@ -103,6 +103,7 @@ def test_blocked_streamers_are_skipped_on_every_platform():
     cfg = Config()
     cfg.discovery.languages = []
     cfg.discovery.top_n = 2
+    cfg.discovery.kick_spots = 0
     cfg.discovery.blocked = ["En1", "ytBR"]   # by name; "ytBR" is a YouTube video id here, matched as a name too
     cfg.creds.twitch_client_id = cfg.creds.twitch_client_secret = "x"
     cfg.creds.youtube_api_key = "x"
@@ -167,3 +168,45 @@ def test_old_kick_api_still_works_as_a_fallback():
     s = FakeSession()          # answers only the old v1 shapes at the paths the v2 calls also end with
     top = kick_only(s)
     assert [t.channel for t in top] == ["kicken"]
+
+
+
+def test_spots_are_kept_for_the_biggest_kick_streams():
+    cfg = Config()
+    cfg.discovery.languages = []
+    cfg.discovery.top_n = 3
+    cfg.creds.twitch_client_id = cfg.creds.twitch_client_secret = "x"
+    cfg.creds.youtube_api_key = "x"
+    cfg.creds.kick_client_id = cfg.creds.kick_client_secret = "x"
+    disc = Discovery(cfg, FakeSession())
+    top = asyncio.run(disc.top_streams())
+    # Twitch/YouTube have 9000, 8000, 7000...; Kick's biggest are 4000 and 3000, but 2 spots are kept for Kick
+    assert [t.channel for t in top] == ["en1", "kicken", "kicktr"]
+    assert disc.status["kick"] == {"found": 3, "error": None, "biggest": ["kickEN", 4000], "in_top": 2}
+    assert disc.status["twitch"]["in_top"] == 1 and disc.status["youtube"]["in_top"] == 0
+    cfg.discovery.kick_spots = 0
+    assert [t.channel for t in asyncio.run(Discovery(cfg, FakeSession()).top_streams())] == ["en1", "es1", "ytEN"]
+
+
+def test_platform_without_a_key_is_reported():
+    cfg = Config()
+    cfg.creds.twitch_client_id = cfg.creds.twitch_client_secret = "x"
+    disc = Discovery(cfg, FakeSession())
+    asyncio.run(disc.top_streams())
+    assert disc.status["kick"] == {"error": "no key"} and disc.status["twitch"]["found"] == 1
+
+
+
+def test_kick_wrong_category_id_falls_back_to_the_biggest_streams():
+    class EmptyCategory(KickV2Session):
+        def get(self, url, params=None, **k):
+            if url.endswith("/v2/livestreams") and params and ("category_id", "5") in params:
+                self.calls.append((url, params))
+                return FakeResp({"data": []})
+            return super().get(url, params, **k)
+    cfg = Config()
+    cfg.discovery.platforms = ["kick"]
+    cfg.creds.kick_client_id = cfg.creds.kick_client_secret = "x"
+    cfg.creds.kick_category_id = 5          # an old/wrong override
+    top = asyncio.run(Discovery(cfg, EmptyCategory()).top_streams())
+    assert [t.channel for t in top] == ["adinross"]

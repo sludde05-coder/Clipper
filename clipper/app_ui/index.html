@@ -207,6 +207,7 @@
       <div class="card" style="margin-top:16px">
         <h2>Streams being clipped</h2>
         <div id="rows"><div class="empty" style="padding:24px"><b>Nothing running</b>Press Start clipping.</div></div>
+        <div class="help" id="found" style="margin-bottom:6px"></div>
         <div class="help" id="rule"></div>
         <div class="row" id="blockedrow" style="margin-top:10px" hidden></div>
       </div>
@@ -468,6 +469,13 @@
     $("#restartnote").hidden = !state.needs_restart;
     $("#rule").textContent = `A clip is made when chat jumps far enough above its normal speed. Busy chats need a smaller jump than quiet ones: each streamer's target is shown in the bar.`;
     renderRows(state.rows, on);
+    const PN = { twitch: "Twitch", youtube: "YouTube", kick: "Kick" };
+    $("#found").innerHTML = Object.entries(state.found || {}).map(([p, s]) => {
+      if (s.error === "no key") return `<b>${PN[p]}</b>: no key (Settings)`;
+      if (s.error) return `<b>${PN[p]}</b>: <span style="color:var(--bad, #ff6b6b)">search failed: ${esc(s.error)}</span>`;
+      const big = s.biggest ? `, biggest ${esc(s.biggest[0])} ${Number(s.biggest[1]).toLocaleString()}` : "";
+      return `<b>${PN[p]}</b>: ${s.found} live${big} · ${s.in_top} in the list`;
+    }).join(" &nbsp;|&nbsp; ");
     const br = $("#blockedrow"), blocked = state.blocked || [];
     br.hidden = !blocked.length;
     br.innerHTML = `<span class="help">Blocked:</span>` + blocked.map(n =>

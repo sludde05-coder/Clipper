@@ -24,6 +24,7 @@ class Orchestrator:
         self.log_status = log_status
         self.sessions: dict[str, ChannelSession] = {}
         self.last_top: list[Stream] = []
+        self.found: dict[str, dict] = {}     # what each platform found in the last search (for the app)
         self.refresh_now = asyncio.Event()   # set to look for streams again right away (e.g. after blocking one)
 
     async def drop(self, keys: list[str]) -> None:
@@ -96,6 +97,7 @@ class Orchestrator:
                 try:
                     top = await disc.top_streams()
                     self.last_top = top
+                    self.found = disc.status
                     log.info("top %d for %r: %s", self.cfg.discovery.top_n, self.cfg.discovery.game,
                              ", ".join(f"{s.key}({s.viewers:,})" for s in top) or "none live")
                     await self._sync(top, http)

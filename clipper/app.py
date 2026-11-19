@@ -54,6 +54,8 @@ DELETED = "Deleted clips"
 SETTINGS = [
     ("discovery", "game", "Game to clip", "text", "Twitch/Kick category name, e.g. Grand Theft Auto VI", None),
     ("discovery", "top_n", "How many streams to track", "number", "The biggest live streams of the game", None),
+    ("discovery", "kick_spots", "Spots kept for Kick", "number",
+     "Of those, always clip the biggest this many Kick streams, even if they have fewer viewers (0 = no spots kept)", None),
     ("discovery", "min_viewers", "Minimum viewers", "number", "Smaller streams are skipped", None),
     ("discovery", "platforms", "Find streams on", "multi", "", ["twitch", "youtube", "kick"]),
     ("discovery", "languages", "Language", "language", "", None),
@@ -205,6 +207,7 @@ class ClipperApp:
             "multiplier": self.cfg.detector.multiplier, "min_rate": self.cfg.detector.min_rate,
             "phone_url": self.phone.phone_url if self.phone else "",
             "blocked": self.cfg.discovery.blocked, "needs_restart": self.needs_restart and running,
+            "found": self.orch.found if (self.orch and running) else {},
             "jobs": {k: v["state"] for k, v in self.jobs.items() if v["state"] == "running"},
             "platforms": [{"key": k, "name": TARGETS[k].name} for k in self._platforms()],
             "autofill": self.cfg.post.autofill,

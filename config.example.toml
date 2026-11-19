@@ -5,6 +5,7 @@
 game = "Grand Theft Auto VI"                      # Twitch/Kick category name
 search_terms = ["GTA 6", "GTA VI", "Grand Theft Auto VI"]  # YouTube search
 top_n = 10                                       # how many streams to track
+kick_spots = 2                                   # of those, always the biggest N Kick streams, even if smaller
 min_viewers = 500
 platforms = ["twitch", "youtube", "kick"]
 refresh_seconds = 300                            # re-rank every 5 min
