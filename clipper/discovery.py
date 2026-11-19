@@ -41,6 +41,19 @@ def game_key(name: str) -> str:
     return k
 
 
+def is_game(name: str, wanted: set[str]) -> bool:
+    """Is a category name this game? Also matches names with extras, like 'Grand Theft Auto VI (GTA 6)'
+    or 'GTA 6: Online', but not a different game ('GTA Vice City', 'Grand Theft Auto V')."""
+    if not name:
+        return False
+    parts = [name, *re.split(r"[()\[\]:|/\-–—,]+", name)]
+    if any(game_key(x) in wanted for x in parts if x.strip()):
+        return True
+    if "gta6" in wanted:
+        return re.search(r"\b(gta|grand theft auto)\s*(6|vi)\b", name.lower()) is not None
+    return False
+
+
 class KickError(Exception):
     def __init__(self, status: int, text: str):
         super().__init__(f"Kick said {status}: {text}" if text else f"Kick said {status}")
@@ -276,32 +289,56 @@ class Discovery:
         d = self.cfg.discovery
         return {k for k in (game_key(n) for n in [d.game, *d.search_terms]) if k}
 
+    async def _kick_pages(self, path: str, params: list, h: dict, pages: int) -> list[dict]:
+        """Up to `pages` pages of 100 from a v2 list (Kick pages with a cursor)."""
+        out, cursor = [], ""
+        for _ in range(pages):
+            j = await self._kick_get(path, [*params, ("limit", "100"), *([("cursor", cursor)] if cursor else [])], h)
+            out += j.get("data") or []
+            cursor = (j.get("pagination") or {}).get("next_cursor") or ""
+            if not cursor or not j.get("data"):
+                break
+        return out
+
     async def _kick_category(self, h: dict) -> int | None:
         """The game's category id on Kick: by name (v2), by search (old v1), or from a live stream in it."""
         d = self.cfg.discovery
-        want, names = self._kick_wanted(), [d.game, *d.search_terms]
-        pick = lambda cats: next((c for c in cats if game_key(c.get("name", "")) in want), None)  # noqa: E731
-        tries = [("/v2/categories", [("name", ",".join(names)), ("limit", "100")])]
-        tries += [("/v1/categories", {"q": n}) for n in names]
+        want, names = self._kick_wanted(), list(dict.fromkeys([d.game, *d.search_terms]))
+        seen_names: list[str] = []
         errors = []
+        tries = [("/v2/categories", [("name", n), ("limit", "100")]) for n in names]
+        tries += [("/v1/categories", {"q": n}) for n in names]
         for path, params in tries:
             try:
-                match = pick((await self._kick_get(path, params, h)).get("data") or [])
+                cats = (await self._kick_get(path, params, h)).get("data") or []
             except KickError as e:
                 errors.append(str(e))
                 continue
+            if isinstance(cats, dict):           # tolerate {"data": {"categories": [...]}}
+                cats = next((v for v in cats.values() if isinstance(v, list)), [])
+            seen_names += [c.get("name", "") for c in cats if isinstance(c, dict)]
+            match = next((c for c in cats if isinstance(c, dict) and is_game(c.get("name", ""), want)), None)
             if match:
                 return int(match["id"])
-        # Last resort: the biggest live streams on Kick say which category they're in.
+        # Last resort: Kick's biggest live streams say which category they're in.
+        live_cats: dict[str, int] = {}
         try:
-            live = (await self._kick_get("/v2/livestreams", [("limit", "1000")], h)).get("data") or []
-            cat = next((s["category"] for s in live if game_key((s.get("category") or {}).get("name", "")) in want), None)
-            if cat and cat.get("id"):
-                return int(cat["id"])
+            live = await self._kick_pages("/v2/livestreams", [], h, pages=10)
+            for s in live:
+                cat = s.get("category") or {}
+                if is_game(cat.get("name", ""), want) and cat.get("id"):
+                    return int(cat["id"])
+                if cat.get("name"):
+                    live_cats[cat["name"]] = live_cats.get(cat["name"], 0) + int(s.get("viewer_count") or 0)
         except KickError as e:
             errors.append(str(e))
-        self._warn_once("kick-cat", f"Kick has no category named {d.game!r} yet, or Kick's API didn't answer"
-                        f"{' (' + errors[-1] + ')' if errors else ''}. Set [kick] category_id in config.toml to override")
+        busiest = sorted(live_cats, key=live_cats.get, reverse=True)[:8]
+        self._warn_once("kick-cat", (
+            f"Kick: couldn't find the {d.game!r} category. "
+            f"Category search gave: {', '.join(dict.fromkeys(seen_names)) or 'nothing'}. "
+            f"Busiest categories live on Kick: {', '.join(busiest) or 'none returned'}"
+            + (f". Errors: {'; '.join(dict.fromkeys(errors))}" if errors else "")
+            + ". (You can set [kick] category_id in config.toml.)"))
         return None
 
     async def _kick(self) -> list[Stream]:
@@ -315,8 +352,7 @@ class Discovery:
                 return []
             log.info("Kick: %s is category %s", self.cfg.discovery.game, self._kick_category_id)
         try:
-            data = (await self._kick_get("/v2/livestreams", [("category_id", str(self._kick_category_id)),
-                                                             ("limit", "1000")], h)).get("data") or []
+            data = await self._kick_pages("/v2/livestreams", [("category_id", str(self._kick_category_id))], h, pages=5)
         except KickError as e:
             if e.status not in (400, 404, 410):
                 raise
@@ -326,8 +362,8 @@ class Discovery:
         if not data:
             # Nothing in that category: maybe the id is wrong. Look through Kick's biggest live streams instead
             # and keep the ones playing the game (and remember its real category id).
-            live = (await self._kick_get("/v2/livestreams", [("limit", "1000")], h)).get("data") or []
-            data = [s for s in live if game_key((s.get("category") or {}).get("name", "")) in want]
+            live = await self._kick_pages("/v2/livestreams", [], h, pages=10)
+            data = [s for s in live if is_game((s.get("category") or {}).get("name", ""), want)]
             if data and data[0]["category"].get("id") and not self.cfg.creds.kick_category_id:
                 self._kick_category_id = int(data[0]["category"]["id"])
             log.info("Kick: nothing came back for category %s; found %d %s streams among Kick's biggest",
@@ -335,7 +371,7 @@ class Discovery:
         out = []
         for s in data:
             cat = (s.get("category") or {}).get("name")
-            if cat and game_key(cat) not in want:
+            if cat and not is_game(cat, want):
                 continue
             lang = s.get("language") or s.get("language_code")
             title = s.get("stream_title") or s.get("title") or ""

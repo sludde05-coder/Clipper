@@ -210,3 +210,15 @@ def test_kick_wrong_category_id_falls_back_to_the_biggest_streams():
     cfg.creds.kick_category_id = 5          # an old/wrong override
     top = asyncio.run(Discovery(cfg, EmptyCategory()).top_streams())
     assert [t.channel for t in top] == ["adinross"]
+
+
+def test_kick_category_with_extra_words_matches():
+    assert [t.channel for t in kick_only(KickV2Session("Grand Theft Auto VI (GTA 6)"))] == ["adinross"]
+
+
+def test_kick_says_what_it_got_when_the_game_is_missing(caplog):
+    import logging
+    caplog.set_level(logging.WARNING)
+    assert kick_only(KickV2Session("Just Chatting")) == []
+    msg = " ".join(r.getMessage() for r in caplog.records)
+    assert "couldn't find" in msg and "Just Chatting" in msg and "Grand Theft Auto V" in msg
