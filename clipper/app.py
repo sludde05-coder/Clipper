@@ -1095,7 +1095,7 @@ class ClipperApp:
         if self.cfg.phone.enabled:
             try:
                 from .phone import PhoneServer
-                phone = PhoneServer(self.cfg, self.config_path)
+                phone = PhoneServer(self.cfg, self.config_path, library=self)
                 if await phone.start():
                     self.phone = phone
             except Exception as e:  # noqa: BLE001

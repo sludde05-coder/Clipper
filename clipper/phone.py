@@ -1,5 +1,9 @@
 """The phone app: a small web server on the PC that lets a phone post the clips in the POST folder.
 
+When it runs inside the Clipper app (the normal case), the phone gets the whole clip library like
+the PC app: every clip with its captions, posting (share/save + caption copied), deleting, and
+the Top 10 editor. Those calls go straight to the PC app's own handlers (see LIBRARY below).
+
 The phone opens it once by scanning a QR code (menu option 8), then adds it to the home
 screen, where it works like an app. Everything goes over the home Wi-Fi; the secret key in
 the QR code keeps other people on the network out.
@@ -32,6 +36,15 @@ from .poster import TARGETS, VIDEO_EXT, captions_for, find_metadata, move_to_pos
 log = logging.getLogger(__name__)
 APP_DIR = Path(__file__).parent / "phone_app"
 PLATFORM_LABEL = {"twitch": "Twitch", "youtube": "YouTube", "kick": "Kick"}
+# The PC app's handlers the phone may use: (method, phone path, ClipperApp method). Only these.
+LIBRARY = [
+    ("GET", "/lib/clips", "clips"), ("GET", "/lib/clip", "clip_detail"),
+    ("POST", "/lib/clip/delete", "delete_clip"), ("POST", "/lib/clip/posted", "mark_posted"),
+    ("POST", "/lib/clip/finish", "finish_clip"), ("POST", "/lib/clip/post-captions", "save_post"),
+    ("GET", "/lib/compilation/plan", "compilation_plan"), ("POST", "/lib/compilation", "compilation"),
+    ("GET", "/lib/job", "job"),
+    ("GET", "/media", "media"), ("GET", "/thumb", "thumb"), ("GET", "/api/cover", "cover"),
+]
 
 
 def lan_ip() -> str:
@@ -59,8 +72,9 @@ def ensure_key(cfg: Config, config_path: str | None) -> str:
 
 
 class PhoneServer:
-    def __init__(self, cfg: Config, config_path: str | None = "config.toml"):
+    def __init__(self, cfg: Config, config_path: str | None = "config.toml", library=None):
         self.cfg = cfg
+        self.library = library        # the ClipperApp, when the phone app runs inside it
         self.key = ensure_key(cfg, config_path)
         self.folder = Path(cfg.post.folder)
         self.clips_dir = Path(cfg.clips.output_dir)
@@ -127,7 +141,8 @@ class PhoneServer:
         return await handler(request)
 
     async def index(self, request: web.Request) -> web.Response:
-        html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        # Inside the Clipper app: the whole library. On its own (menu option 8): just the POST folder.
+        html = (APP_DIR / ("library.html" if self.library is not None else "index.html")).read_text(encoding="utf-8")
         k = request.query.get("k", "")
         # The manifest carries the key too, so the home-screen app opens already connected.
         manifest = f"/manifest.webmanifest?k={quote(k)}" if hmac.compare_digest(k, self.key) else "/manifest.webmanifest"
@@ -188,6 +203,24 @@ class PhoneServer:
         log.info("📱 %s posted from the phone (%s), moved to posted/", clip.name, ", ".join(posted) or "nowhere")
         return web.json_response({"ok": True})
 
+    async def info(self, request: web.Request) -> web.Response:
+        lib = self.library
+        return web.json_response({"library": lib is not None,
+                                  "platforms": [{"key": k, "name": TARGETS[k].name} for k in
+                                                (lib._platforms() if lib else self.cfg.post.platforms) if k in TARGETS]})
+
+    def _forward(self, name: str):
+        """A phone route that runs the PC app's handler of the same job (key checked by guard)."""
+        async def handler(request: web.Request) -> web.StreamResponse:
+            if self.library is None:
+                raise web.HTTPNotFound(text="open the Clipper app on your PC")
+            resp = await getattr(self.library, name)(request)
+            if request.query.get("download") and isinstance(resp, web.FileResponse):
+                fname = request.query.get("name") or "clip.mp4"
+                resp.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
+            return resp
+        return handler
+
     async def connect(self, request: web.Request) -> web.Response:
         # Shows the secret, so only on the PC itself.
         if request.remote not in ("127.0.0.1", "::1"):
@@ -215,6 +248,9 @@ class PhoneServer:
         app.router.add_post("/api/clips/{name}/done", self.done)
         app.router.add_get("/connect", self.connect)
         app.router.add_get("/qr.svg", self.qr)
+        app.router.add_get("/api/info", self.info)
+        for method, path, name in LIBRARY:
+            app.router.add_route(method, path, self._forward(name))
         return app
 
     async def start(self) -> bool:

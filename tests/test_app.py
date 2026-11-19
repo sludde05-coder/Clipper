@@ -304,3 +304,37 @@ def test_scheduled_post_goes_to_every_platform(tmp_path):
         last = [i for i in schedule.load(app.clips_dir) if i["label"] == "Kai again"][0]
         assert last["state"] == "failed" and "Also click Post for me" in last["message"]
     run(conf, fn)
+
+
+def test_phone_app_gets_the_whole_library_with_its_key(tmp_path):
+    from clipper.phone import PhoneServer
+    conf, phone, *_ = make_library(tmp_path)
+
+    async def go():
+        app = ClipperApp(str(conf))
+        app.cfg.phone.key = "k1"
+        server = PhoneServer(app.cfg, None, library=app)
+        async with TestClient(TestServer(server.app())) as c:
+            assert (await c.get("/lib/clips")).status == 403                    # no key: refused
+            K = {"X-Clipper-Key": "k1"}
+            page = await (await c.get("/?k=k1")).text()
+            assert "/lib/clips" in page                                          # the library page, not the POST folder one
+            info = await (await c.get("/api/info", headers=K)).json()
+            assert info["library"] is True and info["platforms"]
+            clips = (await (await c.get("/lib/clips", headers=K)).json())["clips"]
+            assert [x["name"] for x in clips] == [phone.stem]
+            cid = clips[0]["id"]
+            detail = await (await c.get(f"/lib/clip?id={cid}", headers=K)).json()
+            assert detail["post"]["tiktok"]["caption"] and detail["cover"].startswith("/api/cover")
+            # the video and its cover load with the key in the address (as <video>/<img> do), and can be saved
+            r = await c.get(detail["video"] + "&k=k1&download=1&name=clip.mp4")
+            assert r.status == 200 and "attachment" in r.headers["Content-Disposition"]
+            assert (await c.get(detail["cover"] + "&k=k1")).status == 200
+            # mark posted, then delete (to the Deleted clips bin, like on the PC)
+            assert (await c.post("/lib/clip/posted", headers=K, json={"id": cid, "platform": "tiktok", "posted": True})).status == 200
+            assert app._meta(phone)["posted"]["tiktok"]
+            assert (await c.post("/lib/clip/delete", headers=K, json={"ids": [cid]})).status == 200
+            assert not phone.exists() and (app.clips_dir / "Deleted clips" / "KaiCenat" / phone.name).exists()
+            # anything else of the PC app isn't reachable from the phone
+            assert (await c.post("/api/quit", headers=K)).status in (404, 405)
+    asyncio.run(go())
