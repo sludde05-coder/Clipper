@@ -235,6 +235,7 @@
               <div class="spacer"></div>
               <span class="help" id="selcount"></span>
               <button class="btn danger" id="delsel" disabled>Delete selected</button>
+              <button class="btn" id="top5" title="A countdown video of the biggest moments: pick 2-10 clips, or none for today's 5 biggest">🏆 Top 5 of today</button>
               <button class="btn primary" id="postsel" disabled>Post selected</button>
               <span id="bintools" hidden class="row">
                 <button class="btn" id="restoresel" disabled>Restore selected</button>
@@ -586,6 +587,7 @@
     $("#selcount").textContent = selected.size ? `${selected.size} selected` : "";
     $("#postsel").disabled = !selected.size;
     $("#postsel").textContent = selected.size ? `Post selected (${selected.size})` : "Post selected";
+    $("#top5").textContent = selected.size >= 2 ? `🏆 Top ${Math.min(selected.size, 10)} of selected` : "🏆 Top 5 of today";
     $("#delsel").disabled = !selected.size;
     $("#delsel").textContent = selected.size ? `Delete selected (${selected.size})` : "Delete selected";
   }
@@ -663,6 +665,23 @@
     list.forEach(c => all ? selected.delete(c.id) : selected.add(c.id)); renderLibrary();
   };
   $("#postsel").onclick = () => startFlow([...selected]);
+  $("#top5").onclick = async () => {
+    const ids = selected.size >= 2 ? [...selected].slice(0, 10) : [];
+    const n = ids.length || 5;
+    const title = prompt(ids.length ? `Title for your Top ${n} (the biggest moment becomes #1):`
+                                    : "Title for your Top 5 of today's biggest moments:", `Top ${n} GTA 6 moments today 😭`);
+    if (title === null) return;
+    let r;
+    try { r = await api("/api/compilation", { ids, title }); } catch (e) { return toast(e.message, 5000); }
+    toast(`Making your Top ${r.count}… it shows up in Clips under "Top moments" in a minute or two`, 5000);
+    for (;;) {
+      await new Promise(res => setTimeout(res, 3000));
+      const j = await api("/api/clip/job?id=compilation").catch(() => ({ state: "running" }));
+      if (j.state === "running") continue;
+      if (j.state === "error") return toast("Couldn't make it: " + j.error, 7000);
+      selected.clear(); toast(`🏆 Your Top ${r.count} is ready`, 4000); loadClips(); return;
+    }
+  };
 
   // The Delete key deletes the selected clips (not while typing).
   document.addEventListener("keydown", e => {

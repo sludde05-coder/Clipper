@@ -492,6 +492,36 @@ class ClipperApp:
         step = (end - start) / len(text)
         return [Word(start + i * step, start + (i + 1) * step - 0.02, t) for i, t in enumerate(text)]
 
+    async def compilation(self, request):
+        """Make a Top N countdown from the chosen clips, or from today's biggest moments if none are chosen."""
+        from . import compilation
+        body = await request.json()
+        if self.jobs.get("compilation", {}).get("state") == "running":
+            return web.json_response({"error": "Already making one"}, status=409)
+        clips = []
+        for cid in body.get("ids") or []:
+            try:
+                clips.append(self._clip(cid))
+            except web.HTTPNotFound:
+                continue
+        if not clips:
+            clips = await asyncio.to_thread(compilation.pick_best, self.clips_dir, int(body.get("count") or 5))
+        if len(clips) < 2:
+            return web.json_response({"error": "There aren't enough clips from the last 24 hours yet "
+                                               "(it needs at least 2)"}, status=400)
+        title = str(body.get("title") or "")
+        self.jobs["compilation"] = {"state": "running", "error": ""}
+
+        async def run():
+            try:
+                out = await compilation.build(self.clips_dir, clips, title, self.cfg.vertical.font)
+                self.jobs["compilation"] = {"state": "done", "error": "", "id": self._id(out)}
+            except Exception as e:  # noqa: BLE001
+                log.error("couldn't make the compilation: %s", e)
+                self.jobs["compilation"] = {"state": "error", "error": str(e)}
+        asyncio.create_task(run())
+        return web.json_response({"ok": True, "count": len(clips)})
+
     async def job(self, request):
         return web.json_response(self.jobs.get(request.query.get("id", ""), {"state": "none", "error": ""}))
 
@@ -911,6 +941,7 @@ class ClipperApp:
         r.add_post("/api/clip/post-captions", self.save_post)
         r.add_post("/api/clip/render", self.rerender)
         r.add_get("/api/clip/job", self.job)
+        r.add_post("/api/compilation", self.compilation)
         r.add_post("/api/clip/delete", self.delete_clip)
         r.add_post("/api/clips/retry", self.retry_failed)
         r.add_post("/api/clips/finish-stuck", self.finish_stuck)

@@ -262,3 +262,12 @@ def test_block_button_stops_the_streamer_and_saves_it(tmp_path):
         assert r["blocked"] == []
     run(conf, fn)
     assert tomllib.loads(conf.read_text(encoding="utf-8"))["discovery"]["blocked"] == []
+
+
+def test_top5_needs_at_least_two_clips(tmp_path):
+    conf, *_ = make_library(tmp_path)
+
+    async def fn(c, app):
+        r = await c.post("/api/compilation", headers=H, json={"ids": [], "title": "x"})
+        assert r.status == 400 and "at least 2" in (await r.json())["error"]
+    run(conf, fn)
