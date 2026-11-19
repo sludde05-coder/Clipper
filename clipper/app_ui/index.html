@@ -365,9 +365,9 @@
         <div class="row" style="gap:18px;align-items:center">
           <img id="phoneqr" alt="" style="width:150px;height:150px;background:#fff;border-radius:12px;padding:8px">
           <div><h2 style="margin:0 0 6px">📱 Phone app</h2>
-            <div class="help">Scan this with your phone's camera (on the same Wi-Fi as this PC) and add the page to your
-              home screen. It has all your clips: post them with Clipper's captions, delete them, and make Top 10s.
-              Clipper has to be open on this PC.</div>
+            <div class="help">Scan this with your phone's camera and add the page to your home screen. It has all your
+              clips: post them with Clipper's captions, delete them, and make Top 10s. Clipper has to be open on this PC.</div>
+            <div class="note" id="phonewhere" style="margin-top:8px"></div>
             <div class="help" id="phoneurl" style="margin-top:6px;word-break:break-all"></div></div>
         </div>
       </div>
@@ -1138,7 +1138,7 @@
     $("#pausemins").value = Math.round(postingData.pause_between_clips / 60 * 10) / 10;
     $("#pausemax").value = Math.round(postingData.pause_between_clips_max / 60 * 10) / 10;
     $("#toptimes").value = (postingData.top_times || []).join(", ");
-    $("#phoneqr").src = "/api/phone-qr.svg?v=" + Date.now();
+    showPhoneQr(state && state.phone_anywhere ? "anywhere" : "wifi");
     $("#phoneurl").textContent = (state && state.phone_url) ? "Or open: " + state.phone_url.replace(/\?k=.*/, "") : "The phone app is off (Settings → Phone app).";
     $("#partgap").value = postingData.part_gap;
     loadSchedule();
@@ -1163,6 +1163,19 @@
     const hi = Math.max(lo, parseFloat($("#pausemax").value) || 0);   // "to" can't be below "from"
     return [{ section: "post", key: "pause_between_clips", value: String(Math.round(lo * 60)) },
             { section: "post", key: "pause_between_clips_max", value: String(Math.round(hi * 60)) }];
+  }
+  function showPhoneQr(where) {
+    const anywhere = !!(state && state.phone_anywhere);
+    $("#phoneqr").src = `/api/phone-qr.svg?where=${where}&v=${Date.now()}`;
+    $("#phonewhere").innerHTML = anywhere
+      ? (where === "anywhere"
+          ? `✅ <b>Works from anywhere</b> (mobile data, any Wi-Fi) through Tailscale. Keep the Tailscale app on, on your phone.
+             <a href="#" id="qrswap">Show the home Wi-Fi code instead</a>`
+          : `🏠 Home Wi-Fi only. <a href="#" id="qrswap">Show the code that works from anywhere</a>`)
+      : `🏠 <b>Only on the same Wi-Fi as this PC.</b> To use it from anywhere: install <b>Tailscale</b> (free, tailscale.com/download)
+         on this PC and on your phone, sign in with the same account on both, then restart Clipper. This code then works everywhere.`;
+    const swap = $("#qrswap");
+    if (swap) swap.onclick = e => { e.preventDefault(); showPhoneQr(where === "anywhere" ? "wifi" : "anywhere"); };
   }
   const SCHED = { pending: "⏳ Waiting", running: "🚀 Posting now", posted: "✅ Posted", partly: "⚠️ Partly posted", failed: "❌ Not posted" };
   async function loadSchedule() {

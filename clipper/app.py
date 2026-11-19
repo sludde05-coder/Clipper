@@ -208,6 +208,7 @@ class ClipperApp:
             "game": self.cfg.discovery.game, "rows": self.orch.status_rows() if (self.orch and running) else [],
             "multiplier": self.cfg.detector.multiplier, "min_rate": self.cfg.detector.min_rate,
             "phone_url": self.phone.phone_url if self.phone else "",
+            "phone_anywhere": bool(self.phone and self.phone.addresses()["anywhere"]),
             "blocked": self.cfg.discovery.blocked, "needs_restart": self.needs_restart and running,
             "found": self.orch.found if (self.orch and running) else {},
             "jobs": {k: v["state"] for k, v in self.jobs.items() if v["state"] == "running"},
@@ -857,7 +858,9 @@ class ClipperApp:
         if not self.phone:
             raise web.HTTPNotFound(text="the phone app is off")
         from .phone import qr_svg
-        return web.Response(body=qr_svg(self.phone.phone_url), content_type="image/svg+xml",
+        where = request.query.get("where", "")
+        url = self.phone.url_for(where) if where in ("wifi", "anywhere") else self.phone.phone_url
+        return web.Response(body=qr_svg(url), content_type="image/svg+xml",
                             headers={"Cache-Control": "no-store"})
 
     async def schedule_list(self, request):

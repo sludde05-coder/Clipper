@@ -125,3 +125,35 @@ def test_key_created_once_and_saved(tmp_path):
     assert len(k1) >= 20
     assert tomllib.loads(conf.read_text(encoding="utf-8"))["phone"]["key"] == k1
     assert ensure_key(cfg, str(conf)) == k1
+
+
+
+def test_tailscale_address_is_used_when_it_runs(tmp_path, monkeypatch):
+    import clipper.phone as ph
+    cfg, _ = make(tmp_path)
+    monkeypatch.setattr(ph, "lan_ip", lambda: "192.168.1.20")
+    monkeypatch.setattr(ph, "tailscale_ip", lambda: "100.101.102.103")
+    s = PhoneServer(cfg, None)
+    assert s.addresses() == {"wifi": "http://192.168.1.20:8765", "anywhere": "http://100.101.102.103:8765"}
+    assert s.phone_url == "http://100.101.102.103:8765/?k=secret-key"           # the QR works away from home
+    assert s.url_for("wifi") == "http://192.168.1.20:8765/?k=secret-key"
+    monkeypatch.setattr(ph, "tailscale_ip", lambda: None)                        # no Tailscale: home Wi-Fi
+    assert s.phone_url == "http://192.168.1.20:8765/?k=secret-key" and s.url_for("anywhere").startswith("http://192.168")
+    cfg.phone.use_tailscale = False
+    monkeypatch.setattr(ph, "tailscale_ip", lambda: "100.101.102.103")
+    assert s.phone_url.startswith("http://192.168.1.20")
+
+
+def test_tailscale_status_is_read(monkeypatch):
+    import subprocess
+
+    import clipper.phone as ph
+    monkeypatch.setattr(ph, "_ts_cache", (0.0, None))
+    monkeypatch.setattr(ph, "_tailscale_cli", lambda: "tailscale")
+    out = json.dumps({"BackendState": "Running", "Self": {"TailscaleIPs": ["100.64.0.7", "fd7a:115c::7"]}})
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
+    assert ph.tailscale_ip() == "100.64.0.7"
+    monkeypatch.setattr(ph, "_ts_cache", (0.0, None))
+    stopped = json.dumps({"BackendState": "Stopped", "Self": {"TailscaleIPs": ["100.64.0.7"]}})
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stopped, ""))
+    assert ph.tailscale_ip() is None

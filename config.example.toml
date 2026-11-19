@@ -81,6 +81,7 @@ pause_between_clips_max = 600  # ...and at most: a random time in between each t
 enabled = true
 port = 8765
 key = ""                # filled in automatically: the secret in the QR code
+use_tailscale = true    # with Tailscale on this PC and the phone, the phone app works from anywhere
 public_url = ""         # optional: a Tailscale https:// address for posting away from home
 
 [anthropic]  # optional: https://console.anthropic.com → API Keys. Lets Claude write the captions.

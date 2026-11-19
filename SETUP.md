@@ -617,15 +617,24 @@ connection. At home over Wi-Fi the app uses plain http, so you'll usually see **
 
 For one-tap **Share** buttons, and to post when you're away from home, see "Posting from anywhere" below.
 
-**Posting from anywhere (optional):** with the free app **Tailscale** on your PC and phone, the phone app gets a
-secure https address that works on mobile data too, and the one-tap Share buttons appear.
-1. Install Tailscale on the PC and the phone ([tailscale.com/download](https://tailscale.com/download)) and log in
+**Posting from anywhere (not just your home Wi-Fi):** use the free app **Tailscale**. It connects your own devices
+to each other privately, so the phone reaches Clipper on mobile data or any Wi-Fi, without opening it to the internet.
+1. Install Tailscale on the PC and the phone ([tailscale.com/download](https://tailscale.com/download)) and sign in
    with the same account on both.
-2. In the Tailscale admin page (login.tailscale.com → **DNS**), turn on **HTTPS Certificates**.
-3. On the PC, open a terminal and run: `tailscale serve --bg 8765`. It prints an address like
+2. Restart Clipper. In **Posting → 📱 Phone app** it now says **Works from anywhere**: scan that QR code and add the
+   page to your home screen again.
+3. Keep the Tailscale app switched on, on your phone. (At home it works too.)
+
+If the phone can't connect through Tailscale, Windows Firewall may be blocking it: when Windows asks whether Python
+may use networks, allow both **Private** and **Public**.
+
+**One-tap Share buttons (optional, with Tailscale):** phones only allow sharing straight into another app from an
+https address.
+1. In the Tailscale admin page (login.tailscale.com → **DNS**), turn on **HTTPS Certificates**.
+2. On the PC, open a terminal and run: `tailscale serve --bg 8765`. It prints an address like
    `https://your-pc.tail1234.ts.net`.
-4. Put that address in `config.toml` under `[phone]`: `public_url = "https://your-pc.tail1234.ts.net"`.
-5. Choose **8) Phone app** again and scan the new QR code (add it to your home screen again too).
+3. Put that address in `config.toml` under `[phone]`: `public_url = "https://your-pc.tail1234.ts.net"`, restart
+   Clipper and scan the new QR code.
 
 ### Posting your clips on the PC
 

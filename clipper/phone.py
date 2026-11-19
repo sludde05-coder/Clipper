@@ -59,6 +59,45 @@ def lan_ip() -> str:
         s.close()
 
 
+_ts_cache: tuple[float, str | None] = (0.0, None)
+
+
+def _tailscale_cli() -> str | None:
+    import shutil
+    import sys
+    found = shutil.which("tailscale")
+    if found:
+        return found
+    for p in ([r"C:\Program Files\Tailscale\tailscale.exe", r"C:\Program Files (x86)\Tailscale\tailscale.exe"]
+              if sys.platform == "win32" else
+              ["/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale", "/usr/bin/tailscale"]):
+        if Path(p).exists():
+            return p
+    return None
+
+
+def tailscale_ip() -> str | None:
+    """This PC's Tailscale address (100.x.y.z) when Tailscale is installed, signed in and running.
+    A phone with Tailscale on reaches it from anywhere: mobile data, any Wi-Fi. Checked at most once a minute."""
+    import subprocess
+    import time
+    global _ts_cache
+    if time.time() - _ts_cache[0] < 60:
+        return _ts_cache[1]
+    ip = None
+    cli = _tailscale_cli()
+    if cli:
+        try:
+            r = subprocess.run([cli, "status", "--json"], capture_output=True, text=True, timeout=4, **NO_WINDOW)
+            st = json.loads(r.stdout or "{}")
+            if st.get("BackendState") == "Running":
+                ip = next((a for a in (st.get("Self") or {}).get("TailscaleIPs") or [] if "." in a), None)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            ip = None
+    _ts_cache = (time.time(), ip)
+    return ip
+
+
 def ensure_key(cfg: Config, config_path: str | None) -> str:
     """Create the secret key once and save it in config.toml, so the phone keeps working."""
     if cfg.phone.key:
@@ -83,11 +122,21 @@ class PhoneServer:
 
     # ------------------------------------------------------------ addresses
 
+    def addresses(self) -> dict[str, str | None]:
+        """Where the phone can reach this PC: the home network, and Tailscale (from anywhere) if it runs."""
+        ts = tailscale_ip() if self.cfg.phone.use_tailscale else None
+        return {"wifi": f"http://{lan_ip()}:{self.cfg.phone.port}",
+                "anywhere": self.cfg.phone.public_url.rstrip("/") or (f"http://{ts}:{self.cfg.phone.port}" if ts else None)}
+
     @property
     def base_url(self) -> str:
-        if self.cfg.phone.public_url:
-            return self.cfg.phone.public_url.rstrip("/")
-        return f"http://{lan_ip()}:{self.cfg.phone.port}"
+        a = self.addresses()
+        return a["anywhere"] or a["wifi"]
+
+    def url_for(self, where: str) -> str:
+        """The phone link (with its key) for "wifi" or "anywhere"."""
+        a = self.addresses()
+        return f"{(a.get(where) or a['anywhere'] or a['wifi'])}/?k={self.key}"
 
     @property
     def phone_url(self) -> str:

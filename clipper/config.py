@@ -78,6 +78,7 @@ class PhoneConfig:
     port: int = 8765
     key: str = ""                   # secret in the QR code; made automatically on first start
     public_url: str = ""            # optional, e.g. a Tailscale https:// address (see SETUP.md)
+    use_tailscale: bool = True      # when Tailscale runs on this PC, the QR code uses it (works away from home)
 
 
 @dataclass
