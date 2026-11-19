@@ -249,6 +249,7 @@
               <div class="spacer"></div>
               <span class="help" id="selcount"></span>
               <button class="btn danger" id="delsel" disabled>Delete selected</button>
+              <button class="btn" id="dullbtn" title="Finds clips where nothing really happens, so you can trash them">🧹 Find dull clips</button>
               <button class="btn" id="top5" title="A countdown video of the biggest moments: pick 2-10 clips, or none for today's 10 biggest">🏆 Top 10 of today</button>
               <button class="btn primary" id="postsel" disabled>Post selected</button>
               <span id="bintools" hidden class="row">
@@ -440,6 +441,29 @@
     </div>
   </div>
 </div>
+<!-- ===================== DULL CLIPS ===================== -->
+<div class="overlay" id="dull" hidden>
+  <div class="comp">
+    <div class="head">
+      <div class="row" style="justify-content:space-between">
+        <h1 style="margin:0">🧹 Dull clips</h1>
+        <div class="row"><button class="btn" id="dl-again" title="Look at every clip again, also the ones already checked">Check all again</button>
+          <button class="btn ghost" id="dl-close">Close</button></div>
+      </div>
+      <div class="help">The AI looks at frames from across each clip that isn't posted yet, plus what the streamer says and how
+        chat reacted, and says whether anything really happens. Ticked clips go to Deleted clips (you can restore them there).
+        Check the reasons, untick any you want to keep.</div>
+      <div class="note" id="dl-status" hidden></div>
+    </div>
+    <div class="list" id="dl-list"></div>
+    <div class="foot">
+      <span class="help" id="dl-count"></span>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn danger big" id="dl-trash" disabled>Move to Deleted clips</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== TOP 10 EDITOR ===================== -->
 <div class="overlay" id="comp" hidden>
   <div class="comp">
@@ -754,6 +778,65 @@
     list.forEach(c => all ? selected.delete(c.id) : selected.add(c.id)); renderLibrary();
   };
   $("#postsel").onclick = () => startFlow([...selected]);
+  // ---------------------------------------------------------------- dull clips
+  let dull = null;
+  $("#dullbtn").onclick = () => openDull(false);
+  $("#dl-again").onclick = () => { if (confirm("Look at every clip again? It costs a little AI use per clip.")) openDull(true); };
+  $("#dl-close").onclick = () => { $("#dull").hidden = true; $$("#dl-list video").forEach(v => v.pause()); dull = null; loadClips(); };
+  async function openDull(again) {
+    $("#dull").hidden = false;
+    dull = { picked: new Set(), seen: new Set() };
+    try { await api("/api/dull/scan", { again }); } catch (e) { toast(e.message, 5000); }
+    pollDull();
+  }
+  async function pollDull() {
+    if (!dull) return;
+    const r = await api("/api/dull").catch(() => null);
+    if (!r || !dull) return;
+    const j = r.job || {};
+    const running = j.state === "running";
+    $("#dl-status").hidden = !running;
+    if (running) $("#dl-status").innerHTML = `<span class="spin"></span> Looking at the clips… ${j.done} of ${j.total} checked`;
+    // Clips judged dull are ticked when they first show up; your changes to the ticks stay.
+    r.clips.forEach(c => { if (!dull.seen.has(c.id)) { dull.seen.add(c.id); if (c.verdict === "trash") dull.picked.add(c.id); } });
+    dull.clips = r.clips;
+    renderDull();
+    if (running) setTimeout(pollDull, 2500);
+  }
+  function renderDull() {
+    const cs = dull.clips || [];
+    const trash = cs.filter(c => c.verdict === "trash").length;
+    const label = { trash: "😴 Nothing happens", unsure: "❔ Couldn't check", keep: "✅ Something happens" };
+    $("#dl-list").innerHTML = cs.length ? cs.map(c => `
+      <div class="moment" style="grid-template-columns:28px 104px 1fr" data-id="${esc(c.id)}">
+        <input type="checkbox" ${dull.picked.has(c.id) ? "checked" : ""} style="width:20px;height:20px">
+        <video src="${c.video}" poster="${c.thumb}" preload="none" controls muted playsinline></video>
+        <div><b>${label[c.verdict] || esc(c.verdict)}</b>${c.score != null ? ` <span class="help">(${c.score}/10)</span>` : ""}
+          <div style="margin-top:4px">${esc(c.hook || c.name)}</div>
+          <div class="help">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)}</div>
+          ${c.what_happens ? `<div class="help" style="margin-top:6px">What happens: ${esc(c.what_happens)}</div>` : ""}
+          ${c.why ? `<div class="help">Why: ${esc(c.why)}</div>` : ""}</div>
+      </div>`).join("") : `<div class="help" style="padding:20px">No clips checked yet.</div>`;
+    $$("#dl-list .moment").forEach(row => $("input", row).onchange = e => {
+      e.target.checked ? dull.picked.add(row.dataset.id) : dull.picked.delete(row.dataset.id); renderDullFoot();
+    });
+    $("#dl-count").textContent = `${cs.length} checked · ${trash} look dull`;
+    renderDullFoot();
+  }
+  function renderDullFoot() {
+    const n = dull.picked.size;
+    $("#dl-trash").disabled = !n;
+    $("#dl-trash").textContent = n ? `Move ${n} to Deleted clips` : "Move to Deleted clips";
+  }
+  $("#dl-trash").onclick = async () => {
+    const ids = [...dull.picked];
+    if (!ids.length || !confirm(`Move ${ids.length} clip${ids.length > 1 ? "s" : ""} to Deleted clips? You can restore them from there.`)) return;
+    const r = await api("/api/clip/delete", { ids });
+    toast(`Moved ${r.deleted} to Deleted clips`);
+    ids.forEach(id => dull.picked.delete(id));
+    pollDull();
+  };
+
   // ---------------------------------------------------------------- Top 10 editor
   let comp = null;
   $("#top5").onclick = () => openComp(selected.size >= 2 ? [...selected].slice(0, 10) : [], 10);
