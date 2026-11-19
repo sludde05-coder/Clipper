@@ -661,16 +661,26 @@
     if (f.length) html += `<div class="note" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
         <span style="flex:1">⚠️ ${f.length > 1 ? f.length + " clips" : "1 clip"} couldn't be turned into ${f.length > 1 ? "phone clips" : "a phone clip"}. The recordings are kept, so you can try again.
         The Activity log on the Clipping tab says what went wrong.</span>
-        <button class="btn" id="retryfailed">Try again</button></div>`;
+        <button class="btn" id="retryfailed">Try again</button>
+        <button class="btn danger" data-discard="failed">Delete them</button></div>`;
     if (o.length) html += `<div class="note" style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
         <span style="flex:1">🌐 ${o.length} clip${o.length > 1 ? "s were" : " was"} set aside because the streamer spoke another language
         (in each streamer's <i>Other languages</i> folder).</span>
-        <button class="btn" id="openother">Open folder</button></div>`;
+        <button class="btn" id="openother">Open folder</button>
+        <button class="btn danger" data-discard="other">Delete them</button></div>`;
     $("#sidenotes").innerHTML = html;
     if ($("#retryfailed")) $("#retryfailed").onclick = async () => {
       const r = await api("/api/clips/retry", { clips: f.map(x => ({ streamer: x.streamer, name: x.name })) });
       toast(`Trying again for ${r.retrying} clip${r.retrying === 1 ? "" : "s"}…`); loadClips();
     };
+    $$("#sidenotes [data-discard]").forEach(b => b.onclick = async () => {
+      const n = (b.dataset.discard === "failed" ? f : o).length;
+      const what = b.dataset.discard === "failed" ? "recording" + (n > 1 ? "s" : "") + " that couldn't be turned into phone clips"
+                                                  : "clip" + (n > 1 ? "s" : "") + " in another language";
+      if (!confirm(`Delete ${n} ${what}${current ? " of " + current : ""} for good? This can't be undone.`)) return;
+      const r = await api("/api/clips/discard", { which: b.dataset.discard, streamer: current || null });
+      toast(`Deleted ${r.deleted} (${r.freed_mb} MB freed)`); loadClips();
+    });
     if ($("#openother")) $("#openother").onclick = () =>
       api("/api/open-folder", current ? { which: "streamer", name: current } : { which: "clips" });
   }

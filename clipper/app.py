@@ -361,6 +361,29 @@ class ClipperApp:
                                     "number": int(m["n"]) if m else 0})
         return {"making": making, "failed": failed, "other_languages": other}
 
+    async def discard(self, request):
+        """Delete, for good, the recordings that never became phone clips ("failed") or were set aside for
+        another language ("other"), for one streamer or all. They're raw recordings, not finished clips."""
+        body = await request.json()
+        folder = {"failed": naming.NOT_CONVERTED, "other": naming.OTHER_LANGUAGES}.get(body.get("which"))
+        if not folder:
+            raise web.HTTPBadRequest(text="which must be failed or other")
+        only = body.get("streamer") or None
+        count, freed = 0, 0
+        for streamer in (self.clips_dir.iterdir() if self.clips_dir.exists() else []):
+            if not streamer.is_dir() or streamer.name == DELETED or streamer.name.startswith(".") or \
+                    (only and streamer.name != only):
+                continue
+            for clip in list((streamer / folder).glob("*.mp4")):
+                for f in (clip, clip.with_suffix(".json"), streamer / naming.DETAILS / (clip.stem + ".json")):
+                    if f.exists():
+                        freed += f.stat().st_size
+                        f.unlink()
+                count += 1
+        log.info("🗑  deleted %d %s recording%s (%d MB)", count,
+                 "unconverted" if body["which"] == "failed" else "other-language", "" if count == 1 else "s", freed // 10**6)
+        return web.json_response({"ok": True, "deleted": count, "freed_mb": round(freed / 1e6)})
+
     async def retry_failed(self, request):
         """Try making the phone clips again for clips in Not converted."""
         from .session import finish_clip
@@ -1072,6 +1095,7 @@ class ClipperApp:
         r.add_post("/api/schedule/cancel", self.schedule_cancel)
         r.add_post("/api/clip/delete", self.delete_clip)
         r.add_post("/api/clips/retry", self.retry_failed)
+        r.add_post("/api/clips/discard", self.discard)
         r.add_post("/api/clips/finish-stuck", self.finish_stuck)
         r.add_get("/api/deleted", self.deleted)
         r.add_post("/api/deleted/restore", self.restore)

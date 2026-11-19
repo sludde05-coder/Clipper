@@ -338,3 +338,27 @@ def test_phone_app_gets_the_whole_library_with_its_key(tmp_path):
             # anything else of the PC app isn't reachable from the phone
             assert (await c.post("/api/quit", headers=K)).status in (404, 405)
     asyncio.run(go())
+
+
+
+def test_failed_and_other_language_recordings_can_be_deleted(tmp_path):
+    conf, phone, *_ = make_library(tmp_path)
+    root = phone.parent.parent
+    failed = root / naming.NOT_CONVERTED / "KaiCenat_2026-11-19_22-00-00_2.mp4"
+    other = root / naming.OTHER_LANGUAGES / "KaiCenat_2026-11-19_23-00-00_3.mp4"
+    for f in (failed, other):
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x" * 1000)
+    (root / naming.DETAILS / (failed.stem + ".json")).write_text("{}")
+    other.with_suffix(".json").write_text("{}")
+
+    async def fn(c, app):
+        lists = await (await c.get("/api/clips")).json()
+        assert len(lists["failed"]) == 1 and len(lists["other_languages"]) == 1
+        r = await (await c.post("/api/clips/discard", headers=H, json={"which": "failed"})).json()
+        assert r["deleted"] == 1 and not failed.exists() and not (root / naming.DETAILS / (failed.stem + ".json")).exists()
+        r = await (await c.post("/api/clips/discard", headers=H, json={"which": "other", "streamer": "KaiCenat"})).json()
+        assert r["deleted"] == 1 and not other.exists() and not other.with_suffix(".json").exists()
+        assert phone.exists()                                         # finished clips aren't touched
+        assert (await c.post("/api/clips/discard", headers=H, json={"which": "everything"})).status == 400
+    run(conf, fn)
