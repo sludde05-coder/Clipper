@@ -24,7 +24,7 @@ import time
 import webbrowser
 from collections import deque
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -492,35 +492,85 @@ class ClipperApp:
         step = (end - start) / len(text)
         return [Word(start + i * step, start + (i + 1) * step - 0.02, t) for i, t in enumerate(text)]
 
-    async def compilation(self, request):
-        """Make a Top N countdown from the chosen clips, or from today's biggest moments if none are chosen."""
-        from . import compilation
-        body = await request.json()
-        if self.jobs.get("compilation", {}).get("state") == "running":
-            return web.json_response({"error": "Already making one"}, status=409)
+    async def compilation_plan(self, request):
+        """The moments a Top N would use (chosen clips, or the biggest of the last 24 h), #1 first, each
+        with the default part of the clip, for the Top 10 editor."""
+        from . import compilation, schedule
+        ids = [i for i in request.query.get("ids", "").split(",") if i]
         clips = []
-        for cid in body.get("ids") or []:
+        for cid in ids:
             try:
                 clips.append(self._clip(cid))
             except web.HTTPNotFound:
                 continue
+        count = max(2, min(10, int(request.query.get("count") or 10)))
         if not clips:
+            clips = await asyncio.to_thread(compilation.pick_best, self.clips_dir, count)
+        items = await compilation.plan_items(clips)
+        out = []
+        for it in items:
+            meta = compilation.load_meta(it["clip"])
+            cid = self._id(it["clip"])
+            out.append({"id": cid, "start": it["start"], "end": it["end"], "length": it["length"],
+                        "name": meta.get("name") or it["clip"].parent.parent.name, "platform": meta.get("platform", ""),
+                        "hook": (meta.get("captions") or {}).get("hook", ""),
+                        "explosion_offset": meta.get("explosion_offset"),
+                        "video": f"/media?id={quote(cid)}&v={int(it['clip'].stat().st_mtime)}"})
+        n = len(out)
+        return web.json_response({"items": out, "title": compilation.default_title(n),
+                                  "next": schedule.next_slot(self.clips_dir, self.cfg.post.top_times).isoformat(timespec="minutes"),
+                                  "gap": self.cfg.post.part_gap,
+                                  "autosubmit": self.cfg.post.autofill and self.cfg.post.autosubmit})
+
+    async def compilation(self, request):
+        """Make a Top N countdown (optionally as 2 parts, optionally scheduled to post)."""
+        from . import compilation, schedule
+        body = await request.json()
+        if self.jobs.get("compilation", {}).get("state") == "running":
+            return web.json_response({"error": "Already making one"}, status=409)
+        items = []
+        for it in body.get("items") or [{"id": i} for i in body.get("ids") or []]:
+            try:
+                items.append({"clip": self._clip(str(it.get("id", ""))), "start": it.get("start"), "end": it.get("end")})
+            except web.HTTPNotFound:
+                continue
+        if not items:
             clips = await asyncio.to_thread(compilation.pick_best, self.clips_dir, int(body.get("count") or 5))
-        if len(clips) < 2:
+            items = await compilation.plan_items(clips)
+        elif not body.get("items"):
+            items = await compilation.plan_items([i["clip"] for i in items])
+        if len(items) < 2:
             return web.json_response({"error": "There aren't enough clips from the last 24 hours yet "
                                                "(it needs at least 2)"}, status=400)
         title = str(body.get("title") or "")
+        split = bool(body.get("split"))
+        when = None
+        if body.get("schedule"):
+            if not (self.cfg.post.autofill and self.cfg.post.autosubmit):
+                return web.json_response({"error": "Scheduled posting needs \"Also click Post for me\" on (Posting tab)"},
+                                         status=400)
+            try:
+                when = datetime.fromisoformat(str(body.get("at")))
+            except ValueError:
+                when = schedule.next_slot(self.clips_dir, self.cfg.post.top_times)
+        gap = max(1, int(body.get("gap") or self.cfg.post.part_gap))
         self.jobs["compilation"] = {"state": "running", "error": ""}
 
         async def run():
             try:
-                out = await compilation.build(self.clips_dir, clips, title, self.cfg.vertical.font)
-                self.jobs["compilation"] = {"state": "done", "error": "", "id": self._id(out)}
+                made = await compilation.build(self.clips_dir, items, title, self.cfg.vertical.font, split=split)
+                if when is not None:
+                    for k, out in enumerate(made):
+                        at = when + timedelta(minutes=gap * k)
+                        schedule.add(self.clips_dir, self._id(out), at, self._meta(out).get("captions", {}).get("hook", out.stem))
+                        log.info("⏰ %s will be posted at %s", out.name, at.strftime("%a %H:%M"))
+                self.jobs["compilation"] = {"state": "done", "error": "", "id": self._id(made[0]),
+                                            "count": len(made), "scheduled": when is not None}
             except Exception as e:  # noqa: BLE001
                 log.error("couldn't make the compilation: %s", e)
                 self.jobs["compilation"] = {"state": "error", "error": str(e)}
         asyncio.create_task(run())
-        return web.json_response({"ok": True, "count": len(clips)})
+        return web.json_response({"ok": True, "count": len(items)})
 
     async def job(self, request):
         return web.json_response(self.jobs.get(request.query.get("id", ""), {"state": "none", "error": ""}))
@@ -724,38 +774,102 @@ class ClipperApp:
         submit = bool(self.cfg.post.autosubmit and body.get("submit", True))
 
         async def run():
-            from .autopost import FillError, NeedsSignIn, NotConfirmed
-            try:
-                status("Making the cover")
-                cover = await self._cover(clip)
-                left = await self.autoposter().fill(platform, clip, caps, status, submit=submit, cover=cover)
-                if submit:
-                    meta = self._meta(clip)
-                    meta.setdefault("posted", {})[platform] = datetime.now().isoformat(timespec="seconds")
-                    self._save_meta(clip, meta)
-                    self.jobs[key] = {"state": "posted", "error": "", "message": left}
-                    log.info("🚀 %s: %s", clip.name, left)
-                else:
-                    self.jobs[key] = {"state": "done", "error": "", "message": left}
-                    log.info("📝 %s filled in on %s", clip.name, TARGETS[platform].name)
-            except NotConfirmed as e:
-                self.jobs[key] = {"state": "unconfirmed", "error": "", "message": str(e)}
-                log.warning("%s on %s: %s", clip.name, TARGETS[platform].name, e)
-            except NeedsSignIn:
-                name = TARGETS[platform].name.split()[0]
-                self.jobs[key] = {"state": "signin", "error": "",
-                                  "message": f"You're not signed in to {name} in the Clipper profile yet: go to Posting, "
-                                             f"click Sign in, sign in there, close that Chrome window, then press Fill in again"}
-            except FillError as e:
-                self.jobs[key] = {"state": "error", "error": str(e), "message": ""}
-                log.warning("auto-fill on %s: %s", TARGETS[platform].name, e)
-            except Exception as e:  # noqa: BLE001
-                self.jobs[key] = {"state": "error", "error": f"something went wrong ({type(e).__name__}: {e})",
-                                  "message": ""}
-                log.warning("auto-fill on %s failed: %s", TARGETS[platform].name, e, exc_info=True)
+            self.jobs[key] = await self._post_one(clip, platform, caps, status, submit)
 
         asyncio.create_task(run())
         return web.json_response({"ok": True, "key": key})
+
+    async def _post_one(self, clip: Path, platform: str, caps: dict, status, submit: bool) -> dict:
+        """Fill in (and with submit, post) one clip on one platform. Returns the job result."""
+        from .autopost import FillError, NeedsSignIn, NotConfirmed
+        try:
+            status("Making the cover")
+            cover = await self._cover(clip)
+            left = await self.autoposter().fill(platform, clip, caps, status, submit=submit, cover=cover)
+            if submit:
+                meta = self._meta(clip)
+                meta.setdefault("posted", {})[platform] = datetime.now().isoformat(timespec="seconds")
+                self._save_meta(clip, meta)
+                log.info("🚀 %s: %s", clip.name, left)
+                return {"state": "posted", "error": "", "message": left}
+            log.info("📝 %s filled in on %s", clip.name, TARGETS[platform].name)
+            return {"state": "done", "error": "", "message": left}
+        except NotConfirmed as e:
+            log.warning("%s on %s: %s", clip.name, TARGETS[platform].name, e)
+            return {"state": "unconfirmed", "error": "", "message": str(e)}
+        except NeedsSignIn:
+            name = TARGETS[platform].name.split()[0]
+            return {"state": "signin", "error": "",
+                    "message": f"You're not signed in to {name} in the Clipper profile yet: go to Posting, "
+                               f"click Sign in, sign in there, close that Chrome window, then press Fill in again"}
+        except FillError as e:
+            log.warning("auto-fill on %s: %s", TARGETS[platform].name, e)
+            return {"state": "error", "error": str(e), "message": ""}
+        except Exception as e:  # noqa: BLE001
+            log.warning("auto-fill on %s failed: %s", TARGETS[platform].name, e, exc_info=True)
+            return {"state": "error", "error": f"something went wrong ({type(e).__name__}: {e})", "message": ""}
+
+    # ------------------------------------------------------------ scheduled posts
+
+    async def schedule_list(self, request):
+        from . import schedule
+        items = []
+        for i in schedule.load(self.clips_dir):
+            try:
+                clip = self._clip(i["id"])
+                i = {**i, "thumb": f"/thumb?id={quote(i['id'])}&v={int(clip.stat().st_mtime)}"}
+            except web.HTTPNotFound:
+                i = {**i, "thumb": "", "missing": True}
+            items.append(i)
+        return web.json_response({"items": items, "autosubmit": self.cfg.post.autofill and self.cfg.post.autosubmit,
+                                  "next": schedule.next_slot(self.clips_dir, self.cfg.post.top_times).isoformat(timespec="minutes")})
+
+    async def schedule_cancel(self, request):
+        from . import schedule
+        body = await request.json()
+        return web.json_response({"ok": schedule.cancel(self.clips_dir, str(body.get("key", "")))})
+
+    async def _scheduler(self) -> None:
+        """Post scheduled clips when they're due (checked every 20 seconds)."""
+        from . import schedule
+        while True:
+            await asyncio.sleep(20)
+            try:
+                for item in schedule.due(self.clips_dir):
+                    await self._post_scheduled(item)
+            except Exception:  # noqa: BLE001
+                log.exception("scheduled posting failed")
+
+    async def _post_scheduled(self, item: dict) -> None:
+        from . import schedule
+        key = item["key"]
+        if not (self.cfg.post.autofill and self.cfg.post.autosubmit):
+            schedule.update(self.clips_dir, key, state="failed",
+                            message="Not posted: turn on \"Also click Post for me\" in Posting for scheduled posts")
+            log.warning("⏰ %s wasn't posted: \"Also click Post for me\" is off", item["label"])
+            return
+        try:
+            clip = self._clip(item["id"])
+        except web.HTTPNotFound:
+            schedule.update(self.clips_dir, key, state="failed", message="The clip is gone (deleted or moved)")
+            return
+        schedule.update(self.clips_dir, key, state=schedule.RUNNING, message="Posting")
+        log.info("⏰ posting %s (scheduled for %s)", item["label"], item["at"][11:16])
+        results = {}
+        for platform in self._platforms():
+            if (self._meta(clip).get("posted") or {}).get(platform):
+                results[platform] = "posted"
+                continue
+            caps = captions_for(self._meta(clip), clip, self.cfg.post)[platform]
+
+            def status(text, platform=platform):
+                schedule.update(self.clips_dir, key, message=f"{TARGETS[platform].name}: {text}")
+            r = await self._post_one(clip, platform, caps, status, submit=True)
+            results[platform] = r["state"] if r["state"] != "error" else f"error: {r['error']}"
+        ok = [p for p, s in results.items() if s == "posted"]
+        state = "posted" if len(ok) == len(results) else ("partly" if ok else "failed")
+        schedule.update(self.clips_dir, key, state=state, results=results,
+                        message="; ".join(f"{TARGETS[p].name.split()[0]}: {s}" for p, s in results.items()))
 
     async def autofill_job(self, request):
         return web.json_response(self.jobs.get(request.query.get("key", ""), {"state": "none", "error": "", "message": ""}))
@@ -836,7 +950,8 @@ class ClipperApp:
                     "account": getattr(p, f"{k}_account"), "tags": getattr(p, f"{k}_tags")} for k in TARGETS]
         return web.json_response({"fields": fields, "posting": posting, "credit": p.credit, "autofill": p.autofill,
                                   "autosubmit": p.autosubmit, "pause_between_clips": p.pause_between_clips,
-                                  "pause_between_clips_max": max(p.pause_between_clips, p.pause_between_clips_max)})
+                                  "pause_between_clips_max": max(p.pause_between_clips, p.pause_between_clips_max),
+                                  "top_times": p.top_times, "part_gap": p.part_gap})
 
     @staticmethod
     def _default(cfg: Config, section: str, key: str):
@@ -852,6 +967,7 @@ class ClipperApp:
         text = path.read_text(encoding="utf-8")
         allowed = {(s, k): kind for s, k, _l, kind, _h, _o in SETTINGS}
         allowed.update({("post", "platforms"): "multi", ("post", "credit"): "bool", ("post", "autofill"): "bool", ("post", "autosubmit"): "bool", ("post", "pause_between_clips"): "number", ("post", "pause_between_clips_max"): "number",
+                        ("post", "top_times"): "lines", ("post", "part_gap"): "number",
                         **{("post", f"{k}_{f}"): "text" for k in TARGETS for f in ("account", "tags")}})
         for item in body.get("values", []):
             kind = allowed.get((item.get("section"), item.get("key")))
@@ -942,6 +1058,9 @@ class ClipperApp:
         r.add_post("/api/clip/render", self.rerender)
         r.add_get("/api/clip/job", self.job)
         r.add_post("/api/compilation", self.compilation)
+        r.add_get("/api/compilation/plan", self.compilation_plan)
+        r.add_get("/api/schedule", self.schedule_list)
+        r.add_post("/api/schedule/cancel", self.schedule_cancel)
         r.add_post("/api/clip/delete", self.delete_clip)
         r.add_post("/api/clips/retry", self.retry_failed)
         r.add_post("/api/clips/finish-stuck", self.finish_stuck)
@@ -984,6 +1103,7 @@ class ClipperApp:
         if open_ui:
             open_window(url)
         asyncio.create_task(self._recover())
+        asyncio.create_task(self._scheduler())
         try:
             while not self.quit_event.is_set():
                 try:
@@ -991,8 +1111,9 @@ class ClipperApp:
                 except asyncio.TimeoutError:
                     pass
                 idle = time.time() - self.last_seen > idle_exit
+                from .schedule import pending
                 busy = (self.clip_task and not self.clip_task.done()) or any(
-                    j["state"] == "running" for j in self.jobs.values())
+                    j["state"] == "running" for j in self.jobs.values()) or bool(pending(self.clips_dir))
                 if idle_exit and idle and not busy:
                     log.info("window closed and nothing running: exiting")
                     break

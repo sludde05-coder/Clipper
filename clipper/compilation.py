@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timedelta
@@ -116,18 +117,16 @@ def _badges_ass(parts: list[dict], title: str | None, font: str) -> str:
     return "\n".join(out) + "\n"
 
 
-async def make(clips: list[Path], out: Path, title: str, font: str = "Arial") -> tuple[Path, list[dict]]:
-    """Make the countdown from `clips`, biggest moment first in the list (it's shown last, as #1)."""
+async def make(items: list[dict], out: Path, title: str, font: str = "Arial") -> tuple[Path, list[dict]]:
+    """Make one countdown video. items = [{"clip", "start", "end", "rank"}] in the order they're shown
+    (highest rank number first, #1 last)."""
     from .headline import render
-    n = len(clips)
-    order = list(reversed(clips))            # #n first ... #1 last
+    order = [it["clip"] for it in items]
     with tempfile.TemporaryDirectory() as tmp:
         tmpd = Path(tmp)
         args, graph, parts = [], [], []
         # 0: the title card is the first moment, blurred and darkened, with the title on it.
-        first_meta = load_meta(order[0])
-        first_len = await asyncio.to_thread(probe_duration, order[0])
-        s0, _ = window(first_meta, first_len)
+        s0 = items[0]["start"]
         args += ["-ss", f"{s0:.2f}", "-t", f"{INTRO:.2f}", "-i", str(order[0].resolve())]
         size = render(title, tmpd / "title.png") if title.strip() else None
         graph.append("[0:v]setpts=PTS-STARTPTS,fps=30,scale=1080:1920,setsar=1,gblur=sigma=30,"
@@ -143,10 +142,10 @@ async def make(clips: list[Path], out: Path, title: str, font: str = "Arial") ->
         graph.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{INTRO},asetpts=N/SR/TB[introa]")
         at = INTRO
         labels = ["[intro][introa]"]
-        for k, clip in enumerate(order):
+        for k, it in enumerate(items):
+            clip = it["clip"]
             meta = load_meta(clip)
-            length = await asyncio.to_thread(probe_video_duration, clip) or await asyncio.to_thread(probe_duration, clip)
-            start, end = window(meta, length)
+            start, end = it["start"], it["end"]
             dur = max(1.0, end - start)
             args += ["-ss", f"{start:.2f}", "-t", f"{dur:.2f}", "-i", str(clip.resolve())]
             graph.append(f"[{idx}:v]setpts=PTS-STARTPTS,fps=30,scale=1080:1920,setsar=1,format=yuv420p[v{k}]")
@@ -158,7 +157,7 @@ async def make(clips: list[Path], out: Path, title: str, font: str = "Arial") ->
             labels.append(f"[v{k}][a{k}]")
             name = meta.get("name") or clip.parent.parent.name
             where = PLATFORM_NAMES.get(meta.get("platform", ""), "")
-            parts.append({"rank": n - k, "at": at, "dur": dur, "who": f"{name}" + (f" · {where}" if where else ""),
+            parts.append({"rank": it["rank"], "at": at, "start": start, "end": end, "dur": dur, "who": f"{name}" + (f" · {where}" if where else ""),
                           "name": name, "platform": meta.get("platform", ""), "url": meta.get("url", ""),
                           "clip": clip.name, "hook": (meta.get("captions") or {}).get("hook", "")})
             at += dur
@@ -188,7 +187,7 @@ async def make(clips: list[Path], out: Path, title: str, font: str = "Arial") ->
     return out, parts
 
 
-def post_texts(title: str, parts: list[dict]) -> dict:
+def post_texts(title: str, parts: list[dict], note: str = "") -> dict:
     """What's posted with it: the title, a question for comments, and a credit for every streamer."""
     ranked = sorted(parts, key=lambda p: p["rank"], reverse=True)
     credits = " · ".join(f"#{p['rank']} {p['name']}" + (f" ({PLATFORM_NAMES[p['platform']]})" if p["platform"] in PLATFORM_NAMES else "")
@@ -196,8 +195,8 @@ def post_texts(title: str, parts: list[dict]) -> dict:
     names = list(dict.fromkeys(p["name"] for p in ranked))
     tags = ["#gta6", "#gta6clips", f"#top{len(parts)}"]
     return {
-        "tiktok": f"{title}\nWhich one was the best? 👇\n🎥 {credits}",
-        "instagram": f"{title}\nWhich one was the best? 👇\n\n🎥 {credits}",
+        "tiktok": f"{title}\n{note or 'Which one was the best? 👇'}\n🎥 {credits}",
+        "instagram": f"{title}\n{note or 'Which one was the best? 👇'}\n\n🎥 {credits}",
         "youtube_title": title[:60],
         "youtube_description": "\n".join([f"{title}. Which one was the best?", "",
                                           *[f"#{p['rank']} {p['name']}" + (f": {p['url']}" if p["url"] else "")
@@ -206,27 +205,71 @@ def post_texts(title: str, parts: list[dict]) -> dict:
     }
 
 
-async def build(clips_dir: Path, clips: list[Path], title: str = "", font: str = "Arial") -> Path:
-    """Make a compilation of `clips` (any order: they're ranked by how big the moment was) and file it in
-    clips/Top moments/ with its details, ready to post like any other clip."""
-    if len(clips) < 2:
+def part_title(title: str, part: int) -> str:
+    """'Top 10 GTA 6 moments today 😭' -> 'Top 10 GTA 6 moments today (Part 1) 😭'."""
+    from .headline import EMOJI
+    m = re.search(rf"(\s*(?:{EMOJI.pattern}\s*)+)$", title)
+    head, tail = (title[:m.start()], m.group(1).strip()) if m else (title, "")
+    return f"{head.rstrip()} (Part {part})" + (f" {tail}" if tail else "")
+
+
+async def plan_items(clips: list[Path], ranked: bool = True) -> list[dict]:
+    """Moments to use, #1 first: ranked by how big the moment was (or in the given order), each with
+    the default part of the clip (about 14 s around the explosion)."""
+    if ranked:
+        clips = sorted(clips, key=lambda c: strength(load_meta(c)), reverse=True)
+    items = []
+    for c in clips[:10]:
+        length = await asyncio.to_thread(probe_video_duration, c) or await asyncio.to_thread(probe_duration, c)
+        start, end = window(load_meta(c), length)
+        items.append({"clip": c, "start": start, "end": end, "length": round(length, 2)})
+    return items
+
+
+async def build(clips_dir: Path, items: list[dict], title: str = "", font: str = "Arial",
+                split: bool = False) -> list[Path]:
+    """Make a countdown from items (#1 first: [{"clip", "start", "end"}]) and file it in clips/Top moments/,
+    ready to post like any other clip. split=True makes two videos: the lower half of the ranking
+    (e.g. #10-#6) as Part 1 and the top half (#5-#1) as Part 2. Returns the videos, Part 1 first."""
+    if len(items) < 2:
         raise ValueError("pick at least 2 clips")
-    clips = sorted(clips[:10], key=lambda c: strength(load_meta(c)), reverse=True)
-    title = title.strip() or default_title(len(clips))
+    items = items[:10]
+    n = len(items)
+    title = title.strip() or default_title(n)
+    ranked = [{**it, "rank": i + 1} for i, it in enumerate(items)]
+    for it in ranked:
+        length = await asyncio.to_thread(probe_video_duration, it["clip"]) or await asyncio.to_thread(probe_duration, it["clip"])
+        start = min(max(0.0, float(it.get("start") or 0)), max(0.0, length - 1))
+        end = float(it.get("end") or length)
+        it["start"], it["end"] = round(start, 2), round(min(length, max(start + 1, end)), 2)
+    shown = list(reversed(ranked))                    # #n first ... #1 last
+    if split and n >= 4:
+        top = n // 2 + n % 2                          # Part 2 gets the top half (#5-#1 of a Top 10)
+        groups = [(shown[: n - top], part_title(title, 1)), (shown[n - top:], part_title(title, 2))]
+    else:
+        groups = [(shown, title)]
     folder = Path(clips_dir) / FOLDER
-    number = naming.next_number(folder)
-    name = f"Top_moments_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{number}"
-    out = folder / naming.PHONE / f"{name}.mp4"
-    out, parts = await make(clips, out, title, font)
-    naming.commit_number(folder, number)
-    meta = {
-        "name": "", "folder": FOLDER, "compilation": parts, "explosion_offset": 1.0,
-        "explosion_at": datetime.now().isoformat(timespec="seconds"), "vertical": out.name,
-        "captions": {"hook": title, "mood": "hype", "beats": [], "emphasis": [], "layout": "blur", "words": []},
-        "ai_post": post_texts(title, parts),
-    }
-    details = _details(out)
-    details.parent.mkdir(parents=True, exist_ok=True)
-    details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-    log.info("🏆 made %s: %s", out.name, ", ".join(f"#{p['rank']} {p['name']}" for p in sorted(parts, key=lambda p: -p["rank"])))
-    return out
+    made = []
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    for gi, (group, gtitle) in enumerate(groups):
+        number = naming.next_number(folder)
+        out = folder / naming.PHONE / f"Top_moments_{stamp}_{number}.mp4"
+        out, parts = await make(group, out, gtitle, font)
+        naming.commit_number(folder, number)
+        note = ""
+        if len(groups) == 2:
+            note = (f"Part 2 with the top {len(groups[1][0])} is coming up 👀 which one was the best?" if gi == 0
+                    else "Part 1 is on my page. Which one was the best? 👇")
+        meta = {
+            "name": "", "folder": FOLDER, "compilation": parts, "explosion_offset": 1.0,
+            "explosion_at": datetime.now().isoformat(timespec="seconds"), "vertical": out.name,
+            "part": gi + 1 if len(groups) == 2 else None,
+            "captions": {"hook": gtitle, "mood": "hype", "beats": [], "emphasis": [], "layout": "blur", "words": []},
+            "ai_post": post_texts(gtitle, parts, note),
+        }
+        details = _details(out)
+        details.parent.mkdir(parents=True, exist_ok=True)
+        details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        log.info("🏆 made %s: %s", out.name, ", ".join(f"#{p['rank']} {p['name']}" for p in parts))
+        made.append(out)
+    return made

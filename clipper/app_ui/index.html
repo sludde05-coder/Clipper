@@ -151,6 +151,20 @@
   /* ---------- post flow ---------- */
   .overlay { position: fixed; inset: 0; background: rgba(5,6,10,.78); display: grid; place-items: center; z-index: 50; padding: 24px; }
   .overlay[hidden] { display: none; }
+  .comp { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; width: min(1100px, 100%);
+          max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: hidden; }
+  .comp .head { padding: 18px 24px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+  .comp .list { overflow-y: auto; padding: 12px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .comp .foot { padding: 14px 24px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .moment { display: grid; grid-template-columns: 56px 104px 1fr auto; gap: 14px; align-items: center;
+            background: var(--panel2); border-radius: 14px; padding: 10px 12px; }
+  .moment .rank { font-size: 28px; font-weight: 800; color: #ffd600; text-align: center; }
+  .moment video { width: 104px; aspect-ratio: 9/16; background: #000; border-radius: 10px; }
+  .comp input[type=datetime-local] { color-scheme: dark; background: var(--panel2); color: var(--text, #fff);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; }
+  .moment .times { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .moment .times input { width: 76px; }
+  .moment .parthead { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #9aa); margin: 6px 0 -4px; }
   .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; width: min(1100px, 100%);
     max-height: calc(100vh - 48px); overflow: auto; display: grid; grid-template-columns: 300px 1fr; }
   .modal .left { padding: 20px; border-right: 1px solid var(--line); }
@@ -235,7 +249,7 @@
               <div class="spacer"></div>
               <span class="help" id="selcount"></span>
               <button class="btn danger" id="delsel" disabled>Delete selected</button>
-              <button class="btn" id="top5" title="A countdown video of the biggest moments: pick 2-10 clips, or none for today's 5 biggest">🏆 Top 5 of today</button>
+              <button class="btn" id="top5" title="A countdown video of the biggest moments: pick 2-10 clips, or none for today's 10 biggest">🏆 Top 10 of today</button>
               <button class="btn primary" id="postsel" disabled>Post selected</button>
               <span id="bintools" hidden class="row">
                 <button class="btn" id="restoresel" disabled>Restore selected</button>
@@ -340,6 +354,20 @@
             <input type="number" id="pausemax" min="0" step="0.5" style="width:90px"> minutes</div>
           <div class="help">Each wait is a random time in this range (e.g. 8 to 10), so posts don't come at a fixed
           rhythm. Posting many clips back-to-back looks like a bot.</div></div>
+        <div class="row" style="gap:16px;margin-top:12px;flex-wrap:wrap">
+          <label class="field" style="max-width:260px"><span>Top 10 posting times</span>
+            <input type="text" id="toptimes" placeholder="15:00, 21:00">
+            <div class="help">Each day, a scheduled Top 10 goes up at the next free one of these times.</div></label>
+          <label class="field" style="max-width:260px"><span>Minutes between Part 1 and Part 2</span>
+            <input type="number" id="partgap" min="1" style="width:90px"></label>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">⏰ Scheduled posts</h2>
+          <button class="btn ghost" id="schedrefresh">Refresh</button></div>
+        <div class="help">Posted by Clipper at these times, on every platform you post to. Clipper has to be running then
+          (it stays running in the background while posts are scheduled).</div>
+        <div id="schedlist" style="margin-top:10px"></div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="row" style="justify-content:space-between">
@@ -400,6 +428,32 @@
         <button class="btn ok big" id="fl-done">✓ Posted, next</button>
         <button class="btn big" id="fl-skip">Skip</button>
       </div>
+    </div>
+  </div>
+</div>
+<!-- ===================== TOP 10 EDITOR ===================== -->
+<div class="overlay" id="comp" hidden>
+  <div class="comp">
+    <div class="head">
+      <div class="row" style="justify-content:space-between">
+        <h1 style="margin:0" id="cp-head">🏆 Top 10</h1>
+        <div class="row"><div class="seg" id="cp-count"><button data-n="5">Top 5</button><button data-n="10">Top 10</button></div>
+          <button class="btn ghost" id="cp-close">Close</button></div>
+      </div>
+      <label class="field" style="margin:0"><span>Title</span><input type="text" id="cp-title" maxlength="90"></label>
+      <div class="help">#1 is the biggest moment (where chat jumped most). Use ▲▼ to change the order, ✕ to leave one
+        out, and set which part of each clip is used: play it and press "⏵ here" at the start and the end.</div>
+    </div>
+    <div class="list" id="cp-list"></div>
+    <div class="foot">
+      <label class="row" style="gap:8px"><input type="checkbox" id="cp-split"> <span id="cp-splitlabel">Split into 2 videos</span></label>
+      <label class="row" style="gap:8px"><input type="checkbox" id="cp-sched"> <span id="cp-schedlabel">Post it at</span></label>
+      <input type="datetime-local" id="cp-at">
+      <span class="row" id="cp-gaprow" style="gap:6px">, Part 2 <input type="number" id="cp-gap" min="1" style="width:70px"> minutes later</span>
+      <span class="help" id="cp-schednote" hidden>Scheduling needs "Also click Post for me" on (Posting tab).</span>
+      <div class="spacer" style="flex:1"></div>
+      <span class="help" id="cp-total"></span>
+      <button class="btn primary big" id="cp-make">Make it</button>
     </div>
   </div>
 </div>
@@ -587,7 +641,7 @@
     $("#selcount").textContent = selected.size ? `${selected.size} selected` : "";
     $("#postsel").disabled = !selected.size;
     $("#postsel").textContent = selected.size ? `Post selected (${selected.size})` : "Post selected";
-    $("#top5").textContent = selected.size >= 2 ? `🏆 Top ${Math.min(selected.size, 10)} of selected` : "🏆 Top 5 of today";
+    $("#top5").textContent = selected.size >= 2 ? `🏆 Top ${Math.min(selected.size, 10)} of selected` : "🏆 Top 10 of today";
     $("#delsel").disabled = !selected.size;
     $("#delsel").textContent = selected.size ? `Delete selected (${selected.size})` : "Delete selected";
   }
@@ -665,21 +719,97 @@
     list.forEach(c => all ? selected.delete(c.id) : selected.add(c.id)); renderLibrary();
   };
   $("#postsel").onclick = () => startFlow([...selected]);
-  $("#top5").onclick = async () => {
-    const ids = selected.size >= 2 ? [...selected].slice(0, 10) : [];
-    const n = ids.length || 5;
-    const title = prompt(ids.length ? `Title for your Top ${n} (the biggest moment becomes #1):`
-                                    : "Title for your Top 5 of today's biggest moments:", `Top ${n} GTA 6 moments today 😭`);
-    if (title === null) return;
+  // ---------------------------------------------------------------- Top 10 editor
+  let comp = null;
+  $("#top5").onclick = () => openComp(selected.size >= 2 ? [...selected].slice(0, 10) : [], 10);
+  async function openComp(ids, count) {
+    let plan;
+    try { plan = await api(`/api/compilation/plan?count=${count}&ids=${encodeURIComponent(ids.join(","))}`); }
+    catch (e) { return toast(e.message, 5000); }
+    if (plan.items.length < 2) return toast("There aren't enough clips from the last 24 hours yet (it needs at least 2)", 5000);
+    comp = { ids, items: plan.items, gap: plan.gap, autosubmit: plan.autosubmit };
+    $("#cp-title").value = plan.title;
+    $("#cp-count").hidden = !!ids.length;
+    $$("#cp-count button").forEach(b => b.classList.toggle("on", +b.dataset.n === count));
+    $("#cp-split").checked = plan.items.length >= 6;
+    $("#cp-sched").checked = plan.autosubmit;
+    $("#cp-sched").disabled = !plan.autosubmit;
+    $("#cp-schednote").hidden = plan.autosubmit;
+    $("#cp-at").value = plan.next; $("#cp-gap").value = plan.gap;
+    renderComp();
+    $("#comp").hidden = false;
+  }
+  $$("#cp-count button").forEach(b => b.onclick = () => openComp([], +b.dataset.n));
+  function renderComp() {
+    const n = comp.items.length, split = $("#cp-split").checked && n >= 4, top = Math.floor(n / 2) + n % 2;
+    $("#cp-split").disabled = n < 4;
+    $("#cp-splitlabel").textContent = n >= 4 ? `Split into 2 videos: #${n}–#${top + 1} first, then #${top}–#1` : "Split into 2 videos";
+    $("#cp-schedlabel").textContent = split ? "Part 1 goes up at" : "Post it at";
+    $("#cp-gaprow").hidden = !split;
+    const total = comp.items.reduce((s, it) => s + (it.end - it.start), 0);
+    $("#cp-head").textContent = `🏆 Top ${n}`;
+    $("#cp-total").textContent = `${n} moments · about ${Math.round(total + (split ? 4 : 2))} s in total`;
+    const fmt = s => (Math.round(s * 10) / 10).toFixed(1);
+    $("#cp-list").innerHTML = comp.items.map((it, i) => {
+      const rank = i + 1;
+      const head = split && (i === 0 || i === top) ? `<div class="parthead">${i === 0 ? "Part 2 (shown last)" : "Part 1 (shown first)"}</div>` : "";
+      return `${head}<div class="moment" data-i="${i}">
+        <div class="rank">#${rank}</div>
+        <video src="${it.video}#t=${it.start}" preload="metadata" controls muted playsinline></video>
+        <div><b>${esc(it.name)}</b> <span class="help">${esc(it.hook || "")}</span>
+          <div class="times">
+            <span class="help">From</span><input type="number" step="0.5" min="0" max="${it.length}" data-k="start" value="${fmt(it.start)}">
+            <button class="btn ghost" data-here="start" title="Use where the player is now">⏵ here</button>
+            <span class="help">to</span><input type="number" step="0.5" min="0" max="${it.length}" data-k="end" value="${fmt(it.end)}">
+            <button class="btn ghost" data-here="end" title="Use where the player is now">⏵ here</button>
+            <span class="help">= ${fmt(it.end - it.start)} s of ${fmt(it.length)} s</span>
+            <button class="btn ghost" data-play title="Play just this part">▶ Play part</button>
+          </div></div>
+        <div class="row" style="gap:4px;flex-direction:column">
+          <button class="btn ghost" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Rank higher">▲</button>
+          <button class="btn ghost" data-mv="1" ${i === n - 1 ? "disabled" : ""} title="Rank lower">▼</button>
+          <button class="btn ghost" data-rm title="Leave this one out">✕</button></div></div>`;
+    }).join("");
+    $$("#cp-list .moment").forEach(row => {
+      const i = +row.dataset.i, it = comp.items[i], v = $("video", row);
+      const clampSet = (k, val) => {
+        val = Math.max(0, Math.min(it.length, Number(val) || 0));
+        if (k === "start") it.start = Math.min(val, it.end - 1); else it.end = Math.max(val, it.start + 1);
+        renderComp();
+      };
+      $$("input[data-k]", row).forEach(inp => inp.onchange = () => clampSet(inp.dataset.k, inp.value));
+      $$("[data-here]", row).forEach(b => b.onclick = () => clampSet(b.dataset.here, v.currentTime));
+      $("[data-play]", row).onclick = () => {
+        v.currentTime = it.start; v.muted = false; v.play();
+        const stop = () => { if (v.currentTime >= it.end) { v.pause(); v.removeEventListener("timeupdate", stop); } };
+        v.addEventListener("timeupdate", stop);
+      };
+      $$("[data-mv]", row).forEach(b => b.onclick = () => {
+        const j = i + +b.dataset.mv; [comp.items[i], comp.items[j]] = [comp.items[j], comp.items[i]]; renderComp();
+      });
+      $("[data-rm]", row).onclick = () => {
+        if (comp.items.length <= 2) return toast("A countdown needs at least 2 moments");
+        comp.items.splice(i, 1); renderComp();
+      };
+    });
+  }
+  $("#cp-split").onchange = renderComp;
+  $("#cp-close").onclick = () => { $("#comp").hidden = true; $$("#cp-list video").forEach(v => v.pause()); comp = null; };
+  $("#cp-make").onclick = async () => {
+    const split = $("#cp-split").checked && comp.items.length >= 4, sched = $("#cp-sched").checked;
+    const body = { items: comp.items.map(it => ({ id: it.id, start: it.start, end: it.end })), title: $("#cp-title").value,
+                   split, schedule: sched, at: $("#cp-at").value, gap: +$("#cp-gap").value || comp.gap };
     let r;
-    try { r = await api("/api/compilation", { ids, title }); } catch (e) { return toast(e.message, 5000); }
-    toast(`Making your Top ${r.count}… it shows up in Clips under "Top moments" in a minute or two`, 5000);
+    try { r = await api("/api/compilation", body); } catch (e) { return toast(e.message, 6000); }
+    $("#cp-close").onclick();
+    toast(`Making your Top ${r.count}${split ? " (2 videos)" : ""}… it shows up in Clips under "Top moments" in a few minutes`, 6000);
     for (;;) {
       await new Promise(res => setTimeout(res, 3000));
       const j = await api("/api/clip/job?id=compilation").catch(() => ({ state: "running" }));
       if (j.state === "running") continue;
-      if (j.state === "error") return toast("Couldn't make it: " + j.error, 7000);
-      selected.clear(); toast(`🏆 Your Top ${r.count} is ready`, 4000); loadClips(); return;
+      if (j.state === "error") return toast("Couldn't make it: " + j.error, 8000);
+      selected.clear(); loadClips();
+      return toast(`🏆 Your Top ${r.count} is ready` + (j.scheduled ? ". It's scheduled: see Posting → Scheduled posts" : ""), 6000);
     }
   };
 
@@ -973,6 +1103,9 @@
     $("#autosubmit").checked = postingData.autosubmit;
     $("#pausemins").value = Math.round(postingData.pause_between_clips / 60 * 10) / 10;
     $("#pausemax").value = Math.round(postingData.pause_between_clips_max / 60 * 10) / 10;
+    $("#toptimes").value = (postingData.top_times || []).join(", ");
+    $("#partgap").value = postingData.part_gap;
+    loadSchedule();
     $("#platforms").innerHTML = postingData.posting.map(p => `<div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <h2 style="margin:0;display:flex;align-items:center;gap:8px"><span class="pdot" style="background:${PCOLORS[p.key]}"></span>${esc(p.name)}</h2>
@@ -995,12 +1128,26 @@
     return [{ section: "post", key: "pause_between_clips", value: String(Math.round(lo * 60)) },
             { section: "post", key: "pause_between_clips_max", value: String(Math.round(hi * 60)) }];
   }
+  const SCHED = { pending: "⏳ Waiting", running: "🚀 Posting now", posted: "✅ Posted", partly: "⚠️ Partly posted", failed: "❌ Not posted" };
+  async function loadSchedule() {
+    const s = await api("/api/schedule").catch(() => ({ items: [] }));
+    const fmt = iso => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    $("#schedlist").innerHTML = s.items.length ? s.items.map(i => `<div class="row" style="gap:12px;padding:8px 0;border-top:1px solid var(--line)">
+        <div style="width:44px;aspect-ratio:9/16;border-radius:6px;background:#000 center/cover url('${i.thumb}')"></div>
+        <div style="flex:1"><b>${esc(fmt(i.at))}</b> · ${esc(i.label)}<div class="help">${SCHED[i.state] || esc(i.state)}${i.message ? " · " + esc(i.message) : ""}</div></div>
+        ${i.state === "pending" ? `<button class="btn ghost" data-cancel="${esc(i.key)}">Cancel</button>` : ""}</div>`).join("")
+      : `<div class="help">Nothing scheduled. Make a Top 10 in Clips and tick "Post it at".</div>`;
+    $$("[data-cancel]").forEach(b => b.onclick = async () => { await api("/api/schedule/cancel", { key: b.dataset.cancel }); loadSchedule(); });
+  }
+  $("#schedrefresh").onclick = loadSchedule;
   $("#saveposting").onclick = async () => {
     const values = [{ section: "post", key: "platforms", value: $$("[data-en]").filter(i => i.checked).map(i => i.dataset.en) },
                     { section: "post", key: "credit", value: $("#credit").checked },
                     { section: "post", key: "autofill", value: $("#autofill").checked },
                     { section: "post", key: "autosubmit", value: $("#autosubmit").checked },
-                    ...pauseValues()];
+                    ...pauseValues(),
+                    { section: "post", key: "top_times", value: $("#toptimes").value.split(/[,\s]+/).filter(Boolean) },
+                    { section: "post", key: "part_gap", value: String(Math.max(1, parseInt($("#partgap").value) || 60)) }];
     $$("[data-acc]").forEach(i => values.push({ section: "post", key: i.dataset.acc + "_account", value: i.value }));
     $$("[data-tags]").forEach(i => values.push({ section: "post", key: i.dataset.tags + "_tags", value: i.value }));
     await api("/api/settings", { values }); toast("Saved ✓"); refreshState();

@@ -61,6 +61,8 @@ class PostConfig:
     autofill: bool = True           # Post fills in the upload page in Clipper's browser window
     autosubmit: bool = False        # ...and clicks Post / Publish / Share too (against the sites' rules: account risk)
     pause_between_clips: int = 120  # seconds between clips when posting by itself, so it doesn't look like a bot
+    top_times: list[str] = field(default_factory=lambda: ["15:00", "21:00"])  # daily times for scheduled Top 10s
+    part_gap: int = 60              # minutes between Part 1 and Part 2 of a Top 10
     pause_between_clips_max: int = 0  # ...up to this many: a random time in between each time (0 = always the above)
     tiktok_account: str = ""        # shown in the app, e.g. "@myclips"
     youtube_account: str = ""

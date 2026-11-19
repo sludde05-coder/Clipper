@@ -73,6 +73,8 @@ credit = true           # name the streamer and platform in every caption
 autofill = true         # Post fills in video + caption in Clipper's browser window; you click Post
 autosubmit = false      # true: Clipper clicks Post/Publish/Share too (the sites forbid bots: account risk)
 pause_between_clips = 480   # seconds between clips when it posts by itself (at least)...
+top_times = ["15:00", "21:00"]  # daily times a scheduled Top 10 (Part 1) goes up
+part_gap = 60                    # minutes between Part 1 and Part 2
 pause_between_clips_max = 600  # ...and at most: a random time in between each time
 
 [phone]                 # the phone app for posting clips from the POST folder (menu option 8)

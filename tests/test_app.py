@@ -271,3 +271,36 @@ def test_top5_needs_at_least_two_clips(tmp_path):
         r = await c.post("/api/compilation", headers=H, json={"ids": [], "title": "x"})
         assert r.status == 400 and "at least 2" in (await r.json())["error"]
     run(conf, fn)
+
+
+def test_scheduled_post_goes_to_every_platform(tmp_path):
+    from datetime import datetime, timedelta
+
+    from clipper import schedule
+    conf, phone, *_ = make_library(tmp_path)
+
+    async def fn(c, app):
+        app.cfg.post.autofill = app.cfg.post.autosubmit = True
+        app.cfg.post.platforms = ["tiktok", "youtube"]
+        done = []
+
+        async def fake_post(clip, platform, caps, status, submit):
+            status("Posting")
+            done.append((clip.name, platform, submit))
+            return {"state": "posted", "error": "", "message": "ok"}
+        app._post_one = fake_post
+        cid = app._id(phone)
+        schedule.add(app.clips_dir, cid, datetime.now() - timedelta(minutes=1), "Kai")
+        for item in schedule.due(app.clips_dir):
+            await app._post_scheduled(item)
+        assert done == [(phone.name, "tiktok", True), (phone.name, "youtube", True)]
+        items = (await (await c.get("/api/schedule")).json())["items"]
+        assert items[0]["state"] == "posted"
+        # with "Also click Post for me" off, it's not posted and says why
+        app.cfg.post.autosubmit = False
+        schedule.add(app.clips_dir, cid, datetime.now() - timedelta(minutes=1), "Kai again")
+        for item in schedule.due(app.clips_dir):
+            await app._post_scheduled(item)
+        last = [i for i in schedule.load(app.clips_dir) if i["label"] == "Kai again"][0]
+        assert last["state"] == "failed" and "Also click Post for me" in last["message"]
+    run(conf, fn)
