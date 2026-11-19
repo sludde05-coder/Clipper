@@ -209,9 +209,17 @@
         <div>
           <div class="state"><span class="dot" id="statedot"></span><span id="statetext">Not clipping</span></div>
           <div class="modes" id="modes">
-            <label class="opt"><input type="radio" name="mode" value="top" checked> Top streams of <b id="gamename" style="margin-left:4px">the game</b></label>
+            <label class="opt"><input type="radio" name="mode" value="top" checked> Top
+              <input type="number" id="topn" min="0" max="50" style="width:70px;margin:0 6px"> streams of <b id="gamename" style="margin-left:4px">the game</b></label>
+            <div class="field" style="margin:2px 0 8px 28px">
+              <span>…and always clip these streamers too</span>
+              <textarea id="pins" rows="2" placeholder="Paste links, one per line: https://www.twitch.tv/kaicenat, https://kick.com/adinross, https://www.youtube.com/@IShowSpeed"></textarea>
+              <div class="row" style="gap:8px;align-items:center;margin-top:6px">
+                <button class="btn" id="savetargets">Save</button>
+                <span class="help">Works while clipping too. They're clipped whenever they're live, on top of the top streams.</span></div>
+            </div>
             <label class="opt"><input type="radio" name="mode" value="test"> Test on another game: <input type="text" id="testgame" placeholder="Grand Theft Auto V" style="max-width:260px"></label>
-            <label class="opt"><input type="radio" name="mode" value="watch"> Specific streamers: <input type="text" id="targets" placeholder="twitch:kaicenat kick:adinross"></label>
+            <label class="opt"><input type="radio" name="mode" value="watch"> Specific streamers: <input type="text" id="targets" placeholder="Links or names: https://www.twitch.tv/kaicenat kick:adinross"></label>
           </div>
           <div class="help" id="restartnote" hidden>Settings changed: stop and start again to use them.</div>
         </div>
@@ -526,6 +534,8 @@
     $("#pillsub").textContent = on ? `${state.rows.length} streams` : "";
     $("#statetext").textContent = state.stopping ? "Stopping… finishing clips in progress" : on ? state.mode : "Not clipping";
     $("#gamename").textContent = state.game;
+    if (document.activeElement !== $("#topn") && !$("#topn").dataset.dirty) $("#topn").value = state.top_n;
+    if (document.activeElement !== $("#pins") && !$("#pins").dataset.dirty) $("#pins").value = (state.always_track || []).join("\n");
     const btn = $("#startstop");
     btn.textContent = on ? "■ Stop clipping" : "▶ Start clipping";
     btn.classList.toggle("primary", !on); btn.disabled = state.stopping;
@@ -569,6 +579,7 @@
   $("#startstop").onclick = async () => {
     if (state.running) { $("#startstop").disabled = true; await api("/api/clipping/stop", {}); return refreshState(); }
     const mode = $("#modes input[name=mode]:checked").value;
+    if (mode === "top" && ($("#topn").dataset.dirty || $("#pins").dataset.dirty) && !(await saveTargets())) return;
     try {
       await api("/api/clipping/start", { mode, game: $("#testgame").value, targets: $("#targets").value });
       toast("Clipping started"); refreshState();
@@ -669,6 +680,16 @@
     $("#delsel").disabled = !selected.size;
     $("#delsel").textContent = selected.size ? `Delete selected (${selected.size})` : "Delete selected";
   }
+  ["#topn", "#pins"].forEach(s => $(s).oninput = () => $(s).dataset.dirty = "1");
+  async function saveTargets() {
+    try {
+      const r = await api("/api/clipping/targets", { top_n: $("#topn").value, links: $("#pins").value });
+      delete $("#topn").dataset.dirty; delete $("#pins").dataset.dirty;
+      toast(`Saved: top ${r.top_n}` + (r.links.length ? ` + ${r.links.length} streamer${r.links.length > 1 ? "s" : ""} of yours` : ""));
+      refreshState(); return true;
+    } catch (e) { toast(e.message, 6000); return false; }
+  }
+  $("#savetargets").onclick = e => { e.preventDefault(); saveTargets(); };
   function renderSideNotes() {
     const mine = x => !current || x.streamer === current;
     const f = failed.filter(mine), o = otherLang.filter(mine);

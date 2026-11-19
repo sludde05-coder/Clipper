@@ -19,3 +19,20 @@ def test_targets():
     y = parse_target("https://www.youtube.com/watch?v=abcdefghijk")
     assert y.channel == "abcdefghijk"
     assert parse_target("https://youtu.be/abcdefghijk").channel == "abcdefghijk"
+
+
+
+def test_streamer_links_in_any_shape():
+    from clipper.models import parse_target
+    assert parse_target("https://www.twitch.tv/KaiCenat").key == "twitch:kaicenat"
+    assert parse_target("twitch.tv/kaicenat/videos").key == "twitch:kaicenat"
+    assert parse_target("www.kick.com/adinross").key == "kick:adinross"
+    yt = parse_target("https://www.youtube.com/@IShowSpeed")
+    assert yt.key == "youtube:@ishowspeed" and yt.url == "https://www.youtube.com/@IShowSpeed/live"
+    assert yt.display_name == "IShowSpeed"
+    assert parse_target("youtube.com/@xQc/live").url == "https://www.youtube.com/@xQc/live"
+    assert parse_target("https://www.youtube.com/watch?v=abcdefghijk").key == "youtube:abcdefghijk"
+    import pytest
+    for bad in ("https://www.twitch.tv/", "https://example.com/x", "https://www.youtube.com/feed/trending"):
+        with pytest.raises(ValueError):
+            parse_target(bad)

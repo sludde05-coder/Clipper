@@ -224,3 +224,15 @@ def test_kick_says_what_it_got_when_the_game_is_missing(caplog):
     assert kick_only(KickV2Session("Just Chatting")) == []
     msg = " ".join(r.getMessage() for r in caplog.records)
     assert "couldn't find" in msg and "Just Chatting" in msg and "Grand Theft Auto V" in msg
+
+
+
+def test_always_clip_streamers_come_on_top_without_doubling_up():
+    cfg = Config()
+    cfg.discovery.languages = []
+    cfg.discovery.top_n = 1
+    cfg.discovery.always_track = ["https://www.twitch.tv/En1", "https://kick.com/adinross", "not a link"]
+    cfg.creds.twitch_client_id = cfg.creds.twitch_client_secret = "x"
+    top = asyncio.run(Discovery(cfg, FakeSession()).top_streams())
+    # en1 is already the top stream, so only adinross is added; the bad entry is skipped with a warning
+    assert [t.key for t in top] == ["twitch:en1", "kick:adinross"]

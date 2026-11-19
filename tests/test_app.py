@@ -429,3 +429,22 @@ def test_a_clip_being_made_can_be_stopped_and_deleted(tmp_path, monkeypatch):
         assert await asyncio.wait_for(job, 5) is None           # the work stopped, nothing left running
         assert not (phone.parent.parent / naming.NOT_CONVERTED / clip.name).exists()
     run(conf, fn)
+
+
+
+def test_top_n_and_always_clip_links_are_saved(tmp_path):
+    import tomllib
+    conf, *_ = make_library(tmp_path)
+
+    async def fn(c, app):
+        r = await c.post("/api/clipping/targets", headers=H, json={
+            "top_n": "5", "links": "https://www.twitch.tv/kaicenat\nkick.com/adinross  https://www.youtube.com/@IShowSpeed"})
+        assert r.status == 200
+        assert app.cfg.discovery.top_n == 5 and len(app.cfg.discovery.always_track) == 3
+        state = await (await c.get("/api/state")).json()
+        assert state["top_n"] == 5 and state["always_track"][1] == "kick.com/adinross"
+        bad = await c.post("/api/clipping/targets", headers=H, json={"top_n": 5, "links": "https://example.com/x"})
+        assert bad.status == 400 and "Twitch, Kick and YouTube" in (await bad.json())["error"]
+    run(conf, fn)
+    saved = tomllib.loads(conf.read_text(encoding="utf-8"))["discovery"]
+    assert saved["top_n"] == 5 and saved["always_track"][0] == "https://www.twitch.tv/kaicenat"

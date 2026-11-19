@@ -154,9 +154,14 @@ class Discovery:
                 st["in_top"] = sum(1 for s in ranked if s.platform == p)
         self.status = status
         self._report(counts, found, ranked)
-        pinned = [parse_target(t) for t in d.always_track]
-        keys = {s.key for s in ranked}
-        return ranked + [p for p in pinned if p.key not in keys]
+        pinned = []
+        for t in d.always_track:
+            try:
+                pinned.append(parse_target(t))
+            except ValueError as e:
+                self._warn_once(f"pin:{t}", f"skipping {t!r} in \"always clip\": {e}")
+        keys, people = {s.key for s in ranked}, {person_key(s) for s in ranked}
+        return ranked + [p for p in pinned if p.key not in keys and person_key(p) not in people]
 
     def _report(self, counts: dict[str, int], found: list[Stream], ranked: list[Stream]) -> None:
         """Say what each platform found, and why a platform's streams didn't make the top (if they didn't)."""

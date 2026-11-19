@@ -210,6 +210,7 @@ class ClipperApp:
             "phone_url": self.phone.phone_url if self.phone else "",
             "phone_anywhere": bool(self.phone and self.phone.addresses()["anywhere"]),
             "blocked": self.cfg.discovery.blocked, "needs_restart": self.needs_restart and running,
+            "top_n": self.cfg.discovery.top_n, "always_track": self.cfg.discovery.always_track,
             "found": self.orch.found if (self.orch and running) else {},
             "jobs": {k: v["state"] for k, v in self.jobs.items() if v["state"] == "running"},
             "platforms": [{"key": k, "name": TARGETS[k].name} for k in self._platforms()],
@@ -251,9 +252,40 @@ class ClipperApp:
             self.mode = "Clipping " + ", ".join(s.key for s in streams)
         else:
             self.clip_task = asyncio.create_task(self.orch.run_discovery())
-            self.mode = f"Clipping the top {cfg.discovery.top_n} {cfg.discovery.game} streams"
+            self.mode = f"Clipping the top {cfg.discovery.top_n} {cfg.discovery.game} streams" + \
+                        (f" + {len(cfg.discovery.always_track)} of yours" if cfg.discovery.always_track else "")
         log.info("▶  %s", self.mode)
         return web.json_response({"ok": True})
+
+    async def clipping_targets(self, request):
+        """How many top streams to clip, and links to streamers that are always clipped too.
+        Saved to config.toml and, while clipping, used straight away."""
+        body = await request.json()
+        try:
+            top_n = max(0, min(50, int(body.get("top_n", self.cfg.discovery.top_n))))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "How many must be a number"}, status=400)
+        links = [x for x in re.split(r"[\s,]+", str(body.get("links", ""))) if x]
+        bad = []
+        for x in links:
+            try:
+                parse_target(x)
+            except ValueError as e:
+                bad.append(str(e))
+        if bad:
+            return web.json_response({"error": bad[0]}, status=400)
+        path = Path(self.config_path)
+        text = set_value(path.read_text(encoding="utf-8"), "discovery", "top_n", top_n)
+        path.write_text(set_value(text, "discovery", "always_track", links), encoding="utf-8")
+        self.cfg.discovery.top_n, self.cfg.discovery.always_track = top_n, links
+        if self.orch:
+            self.orch.cfg.discovery.top_n, self.orch.cfg.discovery.always_track = top_n, links
+            self.orch.refresh_now.set()
+            if self.mode.startswith("Clipping the top"):
+                self.mode = f"Clipping the top {top_n} {self.cfg.discovery.game} streams" + \
+                            (f" + {len(links)} of yours" if links else "")
+        log.info("🎯 top %d streams%s", top_n, f" + always: {', '.join(parse_target(x).key for x in links)}" if links else "")
+        return web.json_response({"ok": True, "top_n": top_n, "links": links})
 
     async def block(self, request):
         """Block (or unblock) a streamer: never clipped again, on any platform. Takes effect right away."""
@@ -1117,6 +1149,7 @@ class ClipperApp:
         r.add_post("/api/clipping/start", self.start_clipping)
         r.add_post("/api/clipping/stop", self.stop_clipping)
         r.add_post("/api/block", self.block)
+        r.add_post("/api/clipping/targets", self.clipping_targets)
         r.add_get("/api/clips", self.clips)
         r.add_get("/api/clip", self.clip_detail)
         r.add_post("/api/clip/post-captions", self.save_post)
