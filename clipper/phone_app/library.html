@@ -77,26 +77,65 @@
   .toast.show { opacity: 1; transform: none; }
   [hidden] { display: none !important; }
 
+  /* ---------- feed ---------- */
+  body.feedmode { padding: 0; overflow: hidden; }
+  body.feedmode #mainhead { position: fixed; left: 0; right: 0; top: 0; padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+    background: linear-gradient(rgba(0,0,0,.75), rgba(0,0,0,0)); z-index: 6; }
+  .feedtop { display: flex; gap: 8px; align-items: center; width: 100%; }
+  .seg { display: flex; background: rgba(24,27,34,.85); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+  .seg button { border: 0; background: none; color: var(--muted); font: inherit; font-weight: 650; padding: 7px 10px; border-radius: 9px; }
+  .seg button.on { background: var(--card2); color: var(--text); }
+  select.who { flex: 1; min-width: 0; background: rgba(24,27,34,.85); color: var(--text); border: 1px solid var(--line);
+    border-radius: 12px; padding: 9px 8px; font: inherit; font-size: 14px; }
+  .feed { position: fixed; inset: 0; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none; background: #000; }
+  .feed::-webkit-scrollbar { display: none; }
+  .item { position: relative; height: 100vh; height: 100dvh; scroll-snap-align: start; scroll-snap-stop: always;
+    display: grid; place-items: center; overflow: hidden; }
+  .item video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .item .shade { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; pointer-events: none;
+    background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.75)); }
+  .item .meta { position: absolute; left: 14px; right: 86px; bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .item .meta .hook { font-weight: 700; font-size: 17px; text-shadow: 0 1px 3px #000; }
+  .item .meta .who { color: #d7dbe3; font-size: 14px; margin-top: 4px; text-shadow: 0 1px 3px #000; }
+  .item .meta .dots { margin-top: 8px; }
+  .item .meta .dot { background: rgba(0,0,0,.45); }
+  .item .side { position: absolute; right: 10px; bottom: calc(26px + env(safe-area-inset-bottom)); display: flex;
+    flex-direction: column; gap: 14px; align-items: center; }
+  .act { display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: 0; color: #fff;
+    font: inherit; font-size: 12px; font-weight: 600; text-shadow: 0 1px 3px #000; }
+  .act .ic { width: 50px; height: 50px; border-radius: 50%; background: rgba(32,36,45,.8); border: 1px solid rgba(255,255,255,.12);
+    display: grid; place-items: center; font-size: 22px; }
+  .act.primary .ic { background: var(--accent); border-color: var(--accent); }
+  .act.on .ic { background: #ffd600; border-color: #ffd600; color: #000; }
+  .act.danger .ic { color: #ff6b6b; }
+  .paused { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-size: 64px;
+    color: rgba(255,255,255,.85); text-shadow: 0 2px 10px #000; }
+  .newpill { position: fixed; top: calc(64px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 7;
+    background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 8px 16px; font: inherit; font-weight: 700;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  .pickbar { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 8;
+    display: flex; gap: 8px; }
+  .pickbar .btn { min-height: 50px; }
+  .feedempty { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+  .feedempty b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
+
+  /* ---------- sheet (posting) ---------- */
+  .sheet { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto;
+    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
+  .sheet header { position: sticky; top: 0; background: var(--bg); z-index: 2; }
+  .sheet header h1 { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  body.picking .item .meta { bottom: calc(92px + env(safe-area-inset-bottom)); }
+  body.picking .item .side { bottom: calc(96px + env(safe-area-inset-bottom)); }
+  textarea.caption { width: 100%; font: inherit; font-size: 14px; resize: vertical; min-height: 90px; }
+  .btn.danger { color: #ff6b6b; border-color: rgba(255,107,107,.4); }
+  input.text { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px; font: inherit; }
+
+  /* ---------- Top 10 editor ---------- */
   .tabs { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; margin-bottom: 10px; }
   .tabs button { flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 650; padding: 9px 6px; border-radius: 9px; }
   .tabs button.on { background: var(--card2); color: var(--text); }
-  .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 4px; scrollbar-width: none; }
-  .chips::-webkit-scrollbar { display: none; }
-  .chip { flex: none; border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px;
-    padding: 6px 12px; font: inherit; font-size: 14px; }
-  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .clip { position: relative; }
-  .clip.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
-  .clip .tick { position: absolute; top: 14px; left: 14px; width: 26px; height: 26px; border-radius: 50%;
-    background: rgba(0,0,0,.6); border: 2px solid #fff; display: grid; place-items: center; font-size: 14px; }
-  .clip.sel .tick { background: var(--accent); border-color: var(--accent); }
-  .actionbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 8px; z-index: 10; }
-  .actionbar .btn { flex: 1; }
-  .btn.danger { color: #ff6b6b; border-color: rgba(255,107,107,.4); }
-  textarea.caption { width: 100%; font: inherit; font-size: 14px; resize: vertical; min-height: 90px; }
-  input.text { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px; font: inherit; }
   .moment { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 10px; margin-top: 10px; }
   .moment .top { display: flex; gap: 10px; align-items: center; }
   .moment .rank { font-size: 26px; font-weight: 800; color: #ffd600; width: 48px; text-align: center; }
@@ -113,19 +152,29 @@
   .pad-bottom { height: 90px; }
 </style>
 </head>
-<body>
-<header>
-  <button class="iconbtn" id="back" hidden aria-label="Back">‹ Back</button>
-  <h1 id="heading">Clipper</h1>
-  <button class="iconbtn" id="selectbtn">Select</button>
-  <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
+<body class="feedmode">
+<header id="mainhead">
+  <div class="feedtop" id="feedtop">
+    <div class="seg" id="tabs"><button data-t="todo" class="on">To post</button><button data-t="posted">Posted</button></div>
+    <select class="who" id="who"><option value="">All streamers</option></select>
+    <button class="iconbtn" id="todaytop" title="Top 10 of today">🏆</button>
+  </div>
+  <div class="feedtop" id="pagetop" hidden>
+    <button class="iconbtn" id="back">‹ Back</button>
+    <h1 id="heading" style="font-size:20px;margin:0;flex:1">Clipper</h1>
+  </div>
 </header>
 
 <main id="view"></main>
-<div class="actionbar" id="actionbar" hidden>
-  <button class="btn danger" id="act-del">Delete</button>
-  <button class="btn primary" id="act-top">🏆 Top 10</button>
+<div class="sheet" id="sheet" hidden>
+  <header><button class="iconbtn" id="sheetback">‹ Back</button><h1 id="sheethead">Post</h1></header>
+  <div id="sheetbody"></div>
 </div>
+<div class="pickbar" id="pickbar" hidden>
+  <button class="btn" id="pickclear" style="flex:0 0 auto">✕</button>
+  <button class="btn primary" id="pickmake">🏆 Make Top 10</button>
+</div>
+<button class="newpill" id="newpill" hidden>↑ New clips</button>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -136,8 +185,9 @@
     if (KEY) localStorage.setItem("clipper-key", KEY); else KEY = localStorage.getItem("clipper-key") || "";
   } catch (e) {}
 
-  const $ = s => document.querySelector(s);
-  const view = $("#view"), heading = $("#heading"), backBtn = $("#back");
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const view = $("#view");
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const canShareFiles = (() => {
     try { return !!(navigator.canShare && navigator.canShare({ files: [new File([""], "x.mp4", { type: "video/mp4" })] })); }
@@ -150,10 +200,10 @@
   };
   const COLORS = { tiktok: "var(--tiktok)", youtube: "var(--youtube)", instagram: "var(--instagram)" };
 
-  let platforms = [], clips = [], streamers = [];
-  let tab = "todo", streamer = "", selecting = false, selected = new Set();
-  let screen = "list";              // list | clip | top
-  let current = null, fileCache = {}, comp = null;
+  let platforms = [], clips = [], streamers = [], shown = [];
+  let tab = "todo", streamer = "", picks = [];
+  let screen = "feed";            // feed | top   (the posting sheet opens over the feed)
+  let current = null, fileCache = {}, comp = null, sound = false, observer = null, lastIds = "";
 
   // ---------------------------------------------------------------- helpers
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -180,105 +230,160 @@
     let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
     ta.remove(); return ok;
   }
-  function go(name, push = true) {
-    screen = name;
-    backBtn.hidden = name === "list";
-    $("#selectbtn").hidden = name !== "list";
-    if (push && name !== "list") history.pushState({ s: name }, "", "#" + name);
-    updateBar();
-  }
-  window.onpopstate = () => { if (screen !== "list") { stopVideos(); go("list", false); showList(); } };
-  backBtn.onclick = () => history.back();
-  function stopVideos() { view.querySelectorAll("video").forEach(v => v.pause()); }
+  // Posted = posted on every platform you post to (like the PC app); until then it stays in To post.
+  const isPosted = c => { const v = Object.values(c.posted); return v.length > 0 && v.every(Boolean); };
 
-  // ---------------------------------------------------------------- list
-  async function showList() {
-    heading.textContent = "Clipper";
+  // ---------------------------------------------------------------- loading
+  async function load(rerender = true) {
     if (!KEY) {
-      view.innerHTML = `<div class="error"><b>Connect to your PC</b>In the Clipper app on your PC, open the phone QR code and scan it with this phone's camera.</div>`;
+      view.innerHTML = `<div class="feedempty"><div><b>Connect to your PC</b>In Clipper on your PC, go to Posting and scan the phone QR code with this phone's camera.</div></div>`;
       return;
     }
     let data;
     try {
-      const info = await api("/api/info");
-      platforms = info.platforms;
+      platforms = (await api("/api/info")).platforms;
       data = await api("/lib/clips");
     } catch (e) {
-      view.innerHTML = e.kind === "key"
-        ? `<div class="error"><b>Scan the QR code again</b>The key doesn't match this PC anymore.</div>`
-        : `<div class="error"><b>Can't reach your PC</b>Make sure Clipper is open on your PC and this phone is on the same Wi-Fi.</div>`;
+      if (rerender) view.innerHTML = `<div class="feedempty"><div>${e.kind === "key"
+        ? "<b>Scan the QR code again</b>The key doesn't match this PC anymore."
+        : "<b>Can't reach your PC</b>Make sure Clipper is open on your PC and this phone is on the same Wi-Fi."}</div></div>`;
       return;
     }
     clips = data.clips; streamers = data.streamers;
-    for (const id of [...selected]) if (!clips.find(c => c.id === id)) selected.delete(id);
-    renderList();
+    picks = picks.filter(id => clips.find(c => c.id === id));
+    $("#who").innerHTML = `<option value="">All streamers</option>` + streamers.map(s =>
+      `<option value="${esc(s.name)}" ${s.name === streamer ? "selected" : ""}>${esc(s.name)} (${s.to_post})</option>`).join("");
+    const ids = visible().map(c => c.id).join(",");
+    if (rerender || !lastIds) { lastIds = ids; renderFeed(); }
+    else if (ids !== lastIds) $("#newpill").hidden = false;      // don't move the feed under your finger
   }
-  // Posted = posted on every platform you post to (like the PC app); until then it stays in To post.
-  const isPosted = c => { const v = Object.values(c.posted); return v.length > 0 && v.every(Boolean); };
   function visible() {
     return clips.filter(c => (tab === "todo" ? !isPosted(c) : isPosted(c)) && (!streamer || c.streamer === streamer));
   }
-  function renderList() {
-    if (screen !== "list") return;
-    const list = visible();
-    view.innerHTML = `
-      <div class="tabs"><button data-t="todo" class="${tab === "todo" ? "on" : ""}">To post (${clips.filter(c => !isPosted(c)).length})</button>
-        <button data-t="posted" class="${tab === "posted" ? "on" : ""}">Posted</button>
-        <button data-t="top">🏆 Top 10</button></div>
-      <div class="chips"><button class="chip ${!streamer ? "on" : ""}" data-s="">All</button>${streamers.map(s =>
-        `<button class="chip ${streamer === s.name ? "on" : ""}" data-s="${esc(s.name)}">${esc(s.name)}</button>`).join("")}</div>
-      ${list.length ? `<div class="list">${list.map(c => `
-        <button class="clip ${selected.has(c.id) ? "sel" : ""}" data-id="${esc(c.id)}">
-          ${selecting ? `<span class="tick">${selected.has(c.id) ? "✓" : ""}</span>` : ""}
-          <img src="${esc(withKey(c.thumb))}" alt="" loading="lazy">
-          <div class="info">
-            <div class="hook">${esc(c.hook || c.name)}</div>
-            <div class="who">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)}</div>
-            <div class="dots">${platforms.map(p => `<span class="dot ${c.posted[p.key] ? "done" : ""}">${c.posted[p.key] ? "✓ " : ""}${esc(p.name.split(" ")[0])}</span>`).join("")}</div>
-          </div></button>`).join("")}</div>`
-      : `<div class="empty"><b>${tab === "todo" ? "Nothing to post" : "Nothing posted yet"}</b>${tab === "todo" ? "New clips show up here by themselves while Clipper is clipping on your PC." : ""}</div>`}
-      <div class="pad-bottom"></div>`;
-    view.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
-      if (b.dataset.t === "top") return openTop(selecting && selected.size >= 2 ? [...selected] : []);
-      tab = b.dataset.t; renderList();
-    });
-    view.querySelectorAll("[data-s]").forEach(b => b.onclick = () => { streamer = b.dataset.s; renderList(); });
-    view.querySelectorAll(".clip").forEach(b => b.onclick = () => {
-      const id = b.dataset.id;
-      if (selecting) { selected.has(id) ? selected.delete(id) : selected.add(id); renderList(); updateBar(); }
-      else openClip(id);
-    });
-    updateBar();
-  }
-  function updateBar() {
-    const on = screen === "list" && selecting;
-    $("#actionbar").hidden = !on;
-    $("#selectbtn").textContent = selecting ? "Done" : "Select";
-    $("#act-del").textContent = `Delete${selected.size ? " (" + selected.size + ")" : ""}`;
-    $("#act-del").disabled = !selected.size;
-    $("#act-top").textContent = selected.size >= 2 ? `🏆 Top ${Math.min(10, selected.size)} of these` : "🏆 Top 10 (pick 2+)";
-    $("#act-top").disabled = selected.size < 2;
-  }
-  $("#selectbtn").onclick = () => { selecting = !selecting; if (!selecting) selected.clear(); renderList(); };
-  $("#act-del").onclick = async () => {
-    const n = selected.size;
-    if (!n || !confirm(`Delete ${n} clip${n > 1 ? "s" : ""}? They go to Deleted clips on your PC, where you can restore them.`)) return;
-    try { await api("/lib/clip/delete", { ids: [...selected] }); } catch (e) { return toast(e.message); }
-    selected.clear(); selecting = false; toast(`Deleted ${n} clip${n > 1 ? "s" : ""}`); showList();
-  };
-  $("#act-top").onclick = () => openTop([...selected].slice(0, 10));
 
-  // ---------------------------------------------------------------- one clip: post it
-  async function openClip(id) {
+  // ---------------------------------------------------------------- the feed
+  function renderFeed(keepId) {
+    if (screen !== "feed") return;
+    shown = visible();
+    lastIds = shown.map(c => c.id).join(",");
+    $("#newpill").hidden = true;
+    if (observer) observer.disconnect();
+    if (!shown.length) {
+      view.innerHTML = `<div class="feedempty"><div><b>${tab === "todo" ? "Nothing to post" : "Nothing posted yet"}</b>${
+        tab === "todo" ? "New clips show up here while Clipper is clipping on your PC." : ""}</div></div>`;
+      updatePickbar(); return;
+    }
+    view.innerHTML = `<div class="feed" id="feed">${shown.map(c => `
+      <section class="item" data-id="${esc(c.id)}">
+        <video loop playsinline muted preload="none" poster="${esc(withKey(c.thumb))}" data-src="${esc(withKey(c.video))}"></video>
+        <div class="paused" hidden>▶</div>
+        <div class="shade"></div>
+        <div class="meta">
+          <div class="hook">${esc(c.hook || c.name)}</div>
+          <div class="who">${esc(c.streamer)} · ${esc(c.date)} ${esc(c.time)}</div>
+          <div class="dots">${platforms.map(p => `<span class="dot ${c.posted[p.key] ? "done" : ""}">${c.posted[p.key] ? "✓ " : ""}${esc(p.name.split(" ")[0])}</span>`).join("")}</div>
+        </div>
+        <div class="side">
+          <button class="act primary" data-a="post"><span class="ic">📤</span>Post</button>
+          <button class="act ${picks.includes(c.id) ? "on" : ""}" data-a="pick"><span class="ic">🏆</span>Top 10</button>
+          <button class="act danger" data-a="del"><span class="ic">🗑</span>Delete</button>
+          <button class="act" data-a="sound"><span class="ic">${sound ? "🔊" : "🔇"}</span>Sound</button>
+        </div>
+      </section>`).join("")}</div>`;
+    const feed = $("#feed");
+    $$(".item", feed).forEach(item => wireItem(item));
+    // Play the clip that's on screen; load the ones next to it; let go of the far ones (phones run out of memory).
+    observer = new IntersectionObserver(entries => entries.forEach(e => {
+      if (e.isIntersecting && e.intersectionRatio > 0.6) activate(e.target);
+      else e.target.querySelector("video").pause();
+    }), { root: feed, threshold: [0, 0.6, 1] });
+    $$(".item", feed).forEach(i => observer.observe(i));
+    if (keepId) { const el = $(`.item[data-id="${CSS.escape(keepId)}"]`, feed); if (el) el.scrollIntoView(); }
+    updatePickbar();
+  }
+  function activate(item) {
+    const items = $$("#feed .item"), i = items.indexOf(item);
+    items.forEach((it, j) => {
+      const v = it.querySelector("video");
+      if (Math.abs(j - i) <= 1) { if (!v.getAttribute("src")) { v.src = v.dataset.src; v.preload = "auto"; } }
+      else if (v.getAttribute("src")) { v.pause(); v.removeAttribute("src"); v.load(); }
+    });
+    const v = item.querySelector("video");
+    v.muted = !sound;
+    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+    item.querySelector(".paused").hidden = true;
+    current = clips.find(c => c.id === item.dataset.id) || current;
+  }
+  function wireItem(item) {
+    const id = item.dataset.id, v = item.querySelector("video");
+    v.onclick = () => {                          // tap the video: pause / play
+      if (v.paused) { v.play().catch(() => {}); item.querySelector(".paused").hidden = true; }
+      else { v.pause(); item.querySelector(".paused").hidden = false; }
+    };
+    $$("[data-a]", item).forEach(b => b.onclick = async () => {
+      const a = b.dataset.a;
+      if (a === "post") openPost(id);
+      else if (a === "pick") {
+        picks.includes(id) ? picks.splice(picks.indexOf(id), 1) : picks.length < 10 ? picks.push(id) : toast("A Top 10 has 10 at most");
+        b.classList.toggle("on", picks.includes(id)); updatePickbar();
+      } else if (a === "del") {
+        if (!confirm("Delete this clip? It goes to Deleted clips on your PC, where you can restore it.")) return;
+        try { await api("/lib/clip/delete", { ids: [id] }); } catch (e) { return toast(e.message); }
+        removeFromFeed(id); toast("Deleted");
+      } else if (a === "sound") {
+        sound = !sound;
+        $$("#feed [data-a=sound] .ic").forEach(ic => ic.textContent = sound ? "🔊" : "🔇");
+        v.muted = !sound; if (sound) v.play().catch(() => {});
+      }
+    });
+  }
+  function removeFromFeed(id) {
+    const el = $(`#feed .item[data-id="${CSS.escape(id)}"]`);
+    clips = clips.filter(c => c.id !== id); picks = picks.filter(p => p !== id);
+    if (!el) return;
+    const next = el.nextElementSibling || el.previousElementSibling;
+    observer && observer.unobserve(el); el.remove();
+    lastIds = visible().map(c => c.id).join(",");
+    if (next) { next.scrollIntoView(); activate(next); } else renderFeed();
+    updatePickbar();
+  }
+  function updatePickbar() {
+    const n = picks.length;
+    $("#pickbar").hidden = screen !== "feed" || !n || !$("#sheet").hidden;
+    document.body.classList.toggle("picking", !$("#pickbar").hidden);
+    $("#pickmake").textContent = n >= 2 ? `🏆 Make Top ${n} of your picks` : "🏆 Pick at least 2 for a Top 10";
+    $("#pickmake").disabled = n < 2;
+  }
+  $("#pickclear").onclick = () => { picks = []; $$("#feed [data-a=pick]").forEach(b => b.classList.remove("on")); updatePickbar(); };
+  $("#pickmake").onclick = () => openTop([...picks]);
+  $("#todaytop").onclick = () => openTop([]);
+  $$("#tabs button").forEach(b => b.onclick = () => {
+    tab = b.dataset.t; $$("#tabs button").forEach(x => x.classList.toggle("on", x === b)); renderFeed();
+  });
+  $("#who").onchange = e => { streamer = e.target.value; renderFeed(); };
+  $("#newpill").onclick = () => { renderFeed(); $("#feed") && ($("#feed").scrollTop = 0); };
+
+  // ---------------------------------------------------------------- posting sheet
+  function closeSheet() {
+    $("#sheet").hidden = true; $$("#sheet video").forEach(v => v.pause()); $("#sheetbody").innerHTML = "";
+    updatePickbar();
+    const item = current && $(`#feed .item[data-id="${CSS.escape(current.id)}"]`);
+    if (item) activate(item);
+  }
+  $("#sheetback").onclick = () => history.back();
+  async function openPost(id) {
     let c;
     try { c = await api("/lib/clip?id=" + encodeURIComponent(id)); } catch (e) { return toast(e.message); }
-    current = c; go("clip");
-    heading.textContent = c.streamer_name || c.streamer || "Clip";
+    current = c;
+    $$("#feed video").forEach(v => v.pause());
+    history.pushState({ s: "post" }, "", "#post");
+    $("#sheet").hidden = false; $("#sheet").scrollTop = 0; updatePickbar();
+    $("#sheethead").textContent = "Post · " + (c.streamer_name || c.streamer || "clip");
     const fname = c.name + ".mp4";
     const dl = withKey(c.video) + "&download=1&name=" + encodeURIComponent(fname);
     const coverDl = withKey(c.cover) + "&download=1&name=" + encodeURIComponent(c.name + " cover.jpg");
-    view.innerHTML = `
-      <video class="player" src="${esc(withKey(c.video))}" controls playsinline preload="metadata" poster="${esc(withKey(c.thumb))}"></video>
+    const body = $("#sheetbody");
+    body.innerHTML = `
       ${c.hook ? `<div class="title">${esc(c.hook)}</div>` : ""}
       <div class="muted small">${esc(c.streamer_name || c.streamer)} · ${esc(c.date)} ${esc(c.time)}</div>
       ${platforms.map(p => {
@@ -305,15 +410,15 @@
       ${canShareFiles ? "" : `<div class="note">${isIOS ? "On iPhone, Save video puts it in the Files app: open it there, tap Share → Save Video, then pick it in the app."
                                                      : "Save video puts it in your Downloads, where the apps can pick it."} The caption is copied at the same time.</div>`}
       <div class="pad-bottom"></div>`;
-    view.querySelectorAll(".platform").forEach(sec => {
+    $$(".platform", body).forEach(sec => {
       const key = sec.dataset.p;
-      const val = f => sec.querySelector(`textarea[data-f="${f}"]`).value;
+      const val = f => $(`textarea[data-f="${f}"]`, sec).value;
       const first = () => val(key === "youtube" ? "title" : "caption");
-      sec.querySelectorAll("textarea").forEach(ta => ta.onchange = async () => {   // your edits are kept for this clip
-        const fields = {}; sec.querySelectorAll("textarea").forEach(x => fields[x.dataset.f] = x.value);
+      $$("textarea", sec).forEach(ta => ta.onchange = async () => {   // your edits are kept for this clip
+        const fields = {}; $$("textarea", sec).forEach(x => fields[x.dataset.f] = x.value);
         try { await api("/lib/clip/post-captions", { id: c.id, post: { [key]: fields } }); toast("Saved"); } catch (e) { toast(e.message); }
       });
-      sec.querySelectorAll("[data-act]").forEach(btn => btn.onclick = async () => {
+      $$("[data-act]", sec).forEach(btn => btn.onclick = async () => {
         const act = btn.dataset.act;
         if (act === "copy") {
           toast(await copyText(val(btn.dataset.f)) ? "Copied. Paste it in " + key : "Couldn't copy: press and hold the text to copy it");
@@ -330,12 +435,15 @@
           const now = !sec.classList.contains("posted");
           try { await api("/lib/clip/posted", { id: c.id, platform: key, posted: now }); } catch (e) { return toast(e.message); }
           sec.classList.toggle("posted", now);
-          sec.querySelector(".state").textContent = now ? "Posted ✓" : "Not posted";
+          $(".state", sec).textContent = now ? "Posted ✓" : "Not posted";
           btn.textContent = now ? "✓ Posted" : "Mark as posted"; btn.classList.toggle("good", now);
           c.posted_at[key] = now ? "now" : undefined;
+          const lc = clips.find(x => x.id === c.id); if (lc) lc.posted[key] = now;
+          const dot = $(`#feed .item[data-id="${CSS.escape(c.id)}"] .dots`);
+          if (dot && lc) dot.innerHTML = platforms.map(p => `<span class="dot ${lc.posted[p.key] ? "done" : ""}">${lc.posted[p.key] ? "✓ " : ""}${esc(p.name.split(" ")[0])}</span>`).join("");
           if (platforms.every(p => c.posted_at[p.key])) {
             api("/lib/clip/finish", { id: c.id }).catch(() => {});
-            toast("Posted everywhere ✓", 2500);
+            toast("Posted everywhere ✓ It moves to Posted", 3000);
           }
         }
       });
@@ -343,33 +451,49 @@
     $("#del1").onclick = async () => {
       if (!confirm("Delete this clip? It goes to Deleted clips on your PC, where you can restore it.")) return;
       try { await api("/lib/clip/delete", { ids: [c.id] }); } catch (e) { return toast(e.message); }
-      toast("Deleted"); history.back();
+      toast("Deleted"); history.back(); removeFromFeed(c.id);
     };
     if (canShareFiles && !fileCache[c.id]) {
-      const btns = () => view.querySelectorAll('[data-act="share"]');
+      const btns = () => $$('#sheetbody [data-act="share"]');
       btns().forEach(b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "Getting video…"; });
       try {
         const blob = await (await fetch(withKey(c.video))).blob();
         fileCache = { [c.id]: new File([blob], fname, { type: blob.type || "video/mp4" }) };
       } catch (e) { toast("Couldn't load the video from your PC"); }
-      if (current && current.id === c.id) btns().forEach(b => { b.disabled = false; b.textContent = b.dataset.label; });
+      btns().forEach(b => { b.disabled = false; b.textContent = b.dataset.label; });
     }
   }
 
   // ---------------------------------------------------------------- Top 10 editor
+  function showPage(title) {
+    screen = "top";
+    document.body.classList.remove("feedmode");
+    $("#feedtop").hidden = true; $("#pagetop").hidden = false; $("#heading").textContent = title;
+    if (observer) observer.disconnect();
+    updatePickbar();
+  }
+  function backToFeed() {
+    $$("#view video").forEach(v => v.pause());
+    screen = "feed"; comp = null;
+    document.body.classList.add("feedmode");
+    $("#feedtop").hidden = false; $("#pagetop").hidden = true;
+    renderFeed(current && current.id);
+  }
+  $("#back").onclick = () => history.back();
   async function openTop(ids, count = 10) {
     let plan;
     try { plan = await api(`/lib/compilation/plan?count=${count}&ids=${encodeURIComponent(ids.join(","))}`); }
     catch (e) { return toast(e.message, 4000); }
     if (plan.items.length < 2) return toast("Not enough clips from the last 24 hours yet (it needs at least 2)", 4000);
+    if (screen !== "top") history.pushState({ s: "top" }, "", "#top");
     comp = { ids, items: plan.items, title: plan.title, split: plan.items.length >= 6 };
-    go("top"); renderTop();
+    showPage("🏆 Top"); renderTop();
   }
   function renderTop() {
     const n = comp.items.length, split = comp.split && n >= 4, top = Math.floor(n / 2) + n % 2;
-    heading.textContent = `🏆 Top ${n}`;
+    $("#heading").textContent = `🏆 Top ${n}`;
     const fmt = s => (Math.round(s * 10) / 10).toFixed(1);
-    view.innerHTML = `
+    view.innerHTML = `<div>
       ${comp.ids.length ? "" : `<div class="tabs"><button data-n="5" class="${n <= 5 ? "on" : ""}">Top 5</button><button data-n="10" class="${n > 5 ? "on" : ""}">Top 10</button></div>`}
       <div class="label">Title</div><input class="text" id="tp-title" value="${esc(comp.title)}" maxlength="90">
       <label class="switchrow"><input type="checkbox" id="tp-split" ${split ? "checked" : ""} ${n < 4 ? "disabled" : ""}>
@@ -388,28 +512,28 @@
           <div class="row" style="margin-top:8px"><button class="btn" data-play>▶ Play this part (${fmt(it.end - it.start)} s)</button></div>
         </div>`).join("")}
       <div class="finish"><button class="btn primary" id="tp-make">Make it</button></div>
-      <div class="pad-bottom"></div>`;
-    view.querySelectorAll("[data-n]").forEach(b => b.onclick = () => openTop([], +b.dataset.n));
+      <div class="pad-bottom"></div></div>`;
+    $$("[data-n]", view).forEach(b => b.onclick = () => openTop([], +b.dataset.n));
     $("#tp-title").oninput = e => comp.title = e.target.value;
     $("#tp-split").onchange = e => { comp.split = e.target.checked; renderTop(); };
-    view.querySelectorAll(".moment").forEach(row => {
-      const i = +row.dataset.i, it = comp.items[i], v = row.querySelector("video");
+    $$(".moment", view).forEach(row => {
+      const i = +row.dataset.i, it = comp.items[i], v = $("video", row);
       const set = (k, val) => {
         val = Math.max(0, Math.min(it.length, Number(val) || 0));
         if (k === "start") it.start = Math.min(val, it.end - 1); else it.end = Math.max(val, it.start + 1);
         renderTop();
       };
-      row.querySelectorAll("input[data-k]").forEach(inp => inp.onchange = () => set(inp.dataset.k, inp.value));
-      row.querySelectorAll("[data-here]").forEach(b => b.onclick = () => set(b.dataset.here, v.currentTime));
-      row.querySelector("[data-play]").onclick = () => {
+      $$("input[data-k]", row).forEach(inp => inp.onchange = () => set(inp.dataset.k, inp.value));
+      $$("[data-here]", row).forEach(b => b.onclick = () => set(b.dataset.here, v.currentTime));
+      $("[data-play]", row).onclick = () => {
         v.currentTime = it.start; v.play();
         const stop = () => { if (v.currentTime >= it.end) { v.pause(); v.removeEventListener("timeupdate", stop); } };
         v.addEventListener("timeupdate", stop);
       };
-      row.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => {
+      $$("[data-mv]", row).forEach(b => b.onclick = () => {
         const j = i + +b.dataset.mv; [comp.items[i], comp.items[j]] = [comp.items[j], comp.items[i]]; renderTop();
       });
-      row.querySelector("[data-rm]").onclick = () => {
+      $("[data-rm]", row).onclick = () => {
         if (comp.items.length <= 2) return toast("A countdown needs at least 2 moments");
         comp.items.splice(i, 1); renderTop();
       };
@@ -422,7 +546,7 @@
     try { r = await api("/lib/compilation", { items: comp.items.map(it => ({ id: it.id, start: it.start, end: it.end })),
                                                title: comp.title, split, schedule: false }); }
     catch (e) { return toast(e.message, 5000); }
-    stopVideos(); selected.clear(); selecting = false;
+    picks = [];
     history.back();
     toast(`Making your Top ${n}${split ? " (2 videos)" : ""}… it shows up under "Top moments" in a few minutes`, 5000);
     for (;;) {
@@ -430,16 +554,22 @@
       const j = await api("/lib/job?id=compilation").catch(() => ({ state: "running" }));
       if (j.state === "running") continue;
       if (j.state === "error") return toast("Couldn't make it: " + j.error, 7000);
-      toast(`🏆 Your Top ${n} is ready`, 4000); streamer = "Top moments"; tab = "todo"; return showList();
+      toast(`🏆 Your Top ${n} is ready`, 4000); streamer = "Top moments"; tab = "todo";
+      $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.t === "todo"));
+      return load(true);
     }
   }
 
   // ---------------------------------------------------------------- wiring
-  $("#refresh").onclick = () => screen === "clip" && current ? openClip(current.id) : screen === "list" ? showList() : null;
-  setInterval(() => { if (screen === "list" && !selecting && document.visibilityState === "visible") showList(); }, 10000);
-  document.addEventListener("visibilitychange", () => { if (screen === "list" && document.visibilityState === "visible") showList(); });
-  go("list", false);
-  showList();
+  window.onpopstate = () => {
+    if (!$("#sheet").hidden) closeSheet();
+    else if (screen === "top") backToFeed();
+  };
+  setInterval(() => { if (screen === "feed" && $("#sheet").hidden && document.visibilityState === "visible") load(false); }, 12000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") $$("video").forEach(v => v.pause());
+  });
+  load(true);
 })();
 </script>
 </body>
