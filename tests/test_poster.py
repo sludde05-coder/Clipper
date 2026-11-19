@@ -105,3 +105,18 @@ def test_clipboard_failure_prints_caption(tmp_path):
                clipboard=lambda t: False, browser=lambda u: None, reveal=lambda f: None, say=out.append)
     p.post(clip)
     assert any("Couldn't copy automatically" in line for line in out)
+
+
+
+def test_post_text_is_bleeped_too(tmp_path):
+    from clipper.poster import captions_for
+    clip = tmp_path / "Kai_2026-11-19_21-34-12_1.mp4"
+    meta = {"name": "Kai", "platform": "twitch",
+            "ai_post": {"tiktok": "kai found a bong in GTA 6 😭 what the fuck", "instagram": "kai and the drugs",
+                        "youtube_title": "he went to the strip club", "youtube_description": "sex toys??",
+                        "hashtags": ["#gta6"]}}
+    caps = captions_for(meta, clip)
+    text = " ".join(v for f in caps.values() for v in f.values()).lower()
+    for word in ("bong", "fuck", "drugs", "strip club", "sex"):
+        assert word not in text, word
+    assert "#gta6" in text and "*#@*" in text

@@ -106,3 +106,18 @@ def test_headline_is_drawn_with_its_emoji(tmp_path):
     plan = Plan(hook="what the fuck 😭", mood="funny")
     from clipper.captions import censor
     assert censor(plan.hook) == "what the *#@* 😭"
+
+
+
+def test_words_the_platforms_take_videos_down_for_are_bleeped():
+    from clipper.captions import censor, censor_words
+    assert censor("he found the sex toys in GTA 6 😭") == "he found the *#@* in GTA 6 😭"
+    assert censor("smoking a bong at the strip club") == "smoking a *#@* at the *#@*"
+    assert censor("the drugs deal went wrong, I got high") == "the *#@* deal went wrong, I *#@*"
+    # ordinary game talk stays
+    for fine in ("high score", "crack the safe", "escort mission", "lean on it", "blunt weapon", "Essex"):
+        assert censor(fine) == fine
+    # said a word at a time, a phrase is still caught
+    assert censor_words(["dont", "kill", "yourself", "bro"]) == ["dont", "*#@*", "*#@*", "bro"]
+    ass = build_ass(Plan(hook="x", mood="funny"), words("he really said kill yourself"), 5.0)
+    assert "KILL" not in ass and "YOURSELF" not in ass

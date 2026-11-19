@@ -218,6 +218,9 @@ something surprising about GTA 6. Write "GTA 6" (capitals) when you mention the 
   Shape 2 ends in ????? or one emoji.
 - Never use: "chat", "play of the day", "went crazy", "insane moment", "epic", "absolutely", "you won't believe",
   "wild moment", "chaos", "goes silent", "pulls up", "unbelievable", "legendary", "crazy moment".
+- Platform safety: never mention sex or sexual things (sex toys, strippers, porn, nudes...), drugs or smoking
+  (weed, bongs, getting high...), self-harm or suicide, even as a joke, even if the streamer said it. TikTok, YouTube and
+  Instagram take those videos down and warn the account. Describe the moment another way or pick another angle.
 
 Now write:
 - hook_options: 3 different headlines in those shapes (at least one of each shape when the clip allows it).

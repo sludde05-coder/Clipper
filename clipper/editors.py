@@ -180,6 +180,9 @@ POST_PROMPT = """You are the post editor on a team publishing viral livestream c
 with the video on each platform, in the voice of the best clip accounts: like a viewer texting a friend, casual,
 specific to this clip, never like an ad or a news headline. Don't use "chat", "epic", "insane moment", "went crazy",
 "play of the day", "you won't believe".
+Platform safety: never mention sex or sexual things (sex toys, strippers, porn, nudes...), drugs or smoking
+  (weed, bongs, getting high...), self-harm or suicide, even as a joke, even if the streamer said it. TikTok, YouTube and
+  Instagram take those videos down and warn the account. Describe the moment another way or pick another angle.
 
 Streamer: {name} ({platform}). Stream title: {title}
 On-screen headline (written by the caption editor): {hook}
@@ -235,6 +238,8 @@ Check it like a picky senior editor:
   thing>" with one emoji at the end ("Kai went on a date in GTA 6 😭"), or a question about the game ("You can get
   a job in GTA 6?????"). If it describes the video like a narrator, is generic or robotic, write a better one in
   new_hook (5-12 words, that format, never "chat"). Otherwise leave new_hook empty.
+- Does the headline mention sex, drugs, smoking, self-harm or anything else the platforms take videos down for?
+  Then write a safe one in new_hook.
 - Are the reaction captions in the way or pointless? Then drop_beats true.
 ok is true only if nothing needs changing. issues: short notes on what's wrong (empty if ok)."""
 

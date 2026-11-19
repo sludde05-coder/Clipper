@@ -52,19 +52,52 @@ _SWEARS = re.compile(r"""(?x)
   | whores? | sluts?
   | nigg\w* | fags? | faggots? | retards?
 """)
+# Words that get videos taken down or accounts warned on TikTok / YouTube / Instagram even without
+# swearing: sexual content, drugs, self-harm and extremism. Bleeped the same way.
+_UNSAFE = re.compile(r"""(?x)
+    sex | sexy | sexual\w* | sexting | porn\w* | nudes? | naked | nsfw | onlyfans | horny
+  | boobs? | boobies | tits | titties | dildos? | vibrators? | fleshlights? | cum | cumming | orgasm\w*
+  | blowjobs? | handjobs? | strippers? | hookers? | prostitut\w* | rape | raped | raping | rapist\w*
+  | molest\w* | pedo | pedos | pedophil\w* | paedo\w*
+  | drugs? | drugged | weed | marijuana | cannabis | bongs? | cocaine | coke | meth
+  | heroin | fentanyl | lsd | mdma | ecstasy | shrooms | xanax | xans | oxy | oxycontin | percs?
+  | percocets? | stoned
+  | suicid\w* | kys | kms | terroris\w* | nazis? | hitler
+""")
+# Not listed on purpose, because they're usually innocent in a game: high, crack (a safe), joint, blunt
+# (weapon), lean, escort (mission), molly (a name). They're caught as phrases instead where possible.
+# Phrases, where the words are fine on their own ("kill yourself", "strip club", "sex toy"...).
+_PHRASES = re.compile(r"\b(?:kill(?:ing)?\s+(?:yo)?u?r\s*self|kill(?:ing)?\s+(?:my|him|her|them)selfs?|"
+                      r"self[\s-]*harm\w*|strip\s*clubs?|sex\s+toys?|(?:get|gets|got|getting)\s+high|smok(?:e|es|ing|ed)\s+(?:weed|a\s+joint))\b",
+                      re.I)
 _TOKEN = re.compile(r"[A-Za-z][A-Za-z'*]*")
 
 
+def _bad(word: str) -> bool:
+    core = re.sub(r"'s$", "", word.lower()).replace("'", "")
+    return "*" in word or bool(_SWEARS.fullmatch(core) or _UNSAFE.fullmatch(core))
+
+
 def censor(text: str) -> str:
-    """Swear words become *#@* (keeping punctuation): 'what the fuck!' -> 'what the *#@*!'.
+    """Swear words and words the platforms take videos down for become *#@* (keeping punctuation):
+    'what the fuck!' -> 'what the *#@*!', 'he bought a bong' -> 'he bought a *#@*'.
     Words the transcript already starred out ('f***ing') are swapped for *#@* too."""
-    def swap(m: re.Match) -> str:
-        word = m.group(0)
-        core = re.sub(r"'s$", "", word.lower()).replace("'", "")
-        if "*" in word or _SWEARS.fullmatch(core):
-            return BLEEP
-        return word
-    return _TOKEN.sub(swap, text or "")
+    text = _PHRASES.sub(BLEEP, text or "")
+    return _TOKEN.sub(lambda m: BLEEP if _bad(m.group(0)) else m.group(0), text)
+
+
+def censor_words(texts: list[str]) -> list[str]:
+    """censor() for captions shown a word at a time: a phrase like "kill yourself" is caught across
+    words, and every word in it is bleeped."""
+    joined, starts, pos = "", [], 0
+    for t in texts:
+        starts.append(pos)
+        joined += t + " "
+        pos += len(t) + 1
+    hit = set()
+    for m in _PHRASES.finditer(joined):
+        hit |= {i for i, s in enumerate(starts) if s < m.end() and s + len(texts[i]) > m.start()}
+    return [BLEEP if i in hit else censor(t) for i, t in enumerate(texts)]
 
 
 def clean(text: str) -> str:
@@ -126,6 +159,7 @@ def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur"
 
     emphasis = {e.lower().strip(".,!?") for e in plan.emphasis}
     groups = group_words(words)
+    shown = dict(zip(map(id, words), censor_words([w.text for w in words])))
     for gi, group in enumerate(groups):
         # Linger a moment after the last word, but never into the next group: two groups on screen
         # at once draw on top of each other and turn into a jumble.
@@ -137,7 +171,7 @@ def build_ass(plan: Plan, words: list[Word], length: float, layout: str = "blur"
             end = group[i + 1].start if i + 1 < len(group) else g_end
             parts = []
             for j, other in enumerate(group):
-                txt = clean(other.text).upper()
+                txt = clean(shown[id(other)]).upper()
                 key = other.text.lower().strip(".,!?\"'")
                 if j == i:
                     parts.append(f"{{\\c{acc}\\fscx112\\fscy112}}{txt}{{\\r}}")

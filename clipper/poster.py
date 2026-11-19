@@ -133,7 +133,9 @@ def captions_for(meta: dict, clip: Path, cfg: PostConfig | None = None) -> dict[
     for key, fields in (meta.get("post") or {}).items():
         if key in caps and isinstance(fields, dict):
             caps[key].update({k: v for k, v in fields.items() if isinstance(v, str) and k in caps[key]})
-    return caps
+    # Swears and words the platforms take videos down for (sex, drugs, self-harm...) are bleeped here too.
+    from .captions import censor
+    return {key: {k: censor(v) for k, v in fields.items()} for key, fields in caps.items()}
 
 
 def captions_text(caps: dict[str, dict[str, str]]) -> str:
