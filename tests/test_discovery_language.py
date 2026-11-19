@@ -175,6 +175,8 @@ def test_spots_are_kept_for_the_biggest_kick_streams():
     cfg = Config()
     cfg.discovery.languages = []
     cfg.discovery.top_n = 3
+    assert cfg.discovery.kick_spots == 0      # off unless you turn it on
+    cfg.discovery.kick_spots = 2
     cfg.creds.twitch_client_id = cfg.creds.twitch_client_secret = "x"
     cfg.creds.youtube_api_key = "x"
     cfg.creds.kick_client_id = cfg.creds.kick_client_secret = "x"
