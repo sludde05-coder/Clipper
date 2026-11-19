@@ -534,6 +534,58 @@ class ClipperApp:
         step = (end - start) / len(text)
         return [Word(start + i * step, start + (i + 1) * step - 0.02, t) for i, t in enumerate(text)]
 
+    # ------------------------------------------------------------ dull clips
+
+    async def dull_scan(self, request):
+        """Look at every finished clip that isn't posted yet and judge whether anything happens in it."""
+        from . import dullcheck
+        body = await request.json()
+        if self.jobs.get("dullscan", {}).get("state") == "running":
+            return web.json_response({"ok": True, "already": True})
+        todo = []
+        for clip in self._list_clips():
+            meta = self._meta(clip)
+            if meta.get("compilation") or all((meta.get("posted") or {}).get(p) for p in self._platforms()):
+                continue
+            if meta.get("dull_check") and not body.get("again") and meta["dull_check"].get("verdict") != "unsure":
+                continue
+            todo.append(clip)
+        self.jobs["dullscan"] = {"state": "running", "error": "", "done": 0, "total": len(todo)}
+        model = self.cfg.vertical.ai_model
+
+        async def one(clip, slots):
+            async with slots:
+                try:
+                    verdict = await dullcheck.check(clip, self._meta(clip), model)
+                    dullcheck.save(self._details(clip), verdict)
+                    if verdict["verdict"] == "trash":
+                        log.info("🧹 %s: nothing much happens (%s)", clip.name, verdict["why"])
+                except Exception as e:  # noqa: BLE001
+                    log.warning("couldn't check %s: %s", clip.name, e)
+                self.jobs["dullscan"]["done"] += 1
+
+        async def run():
+            slots = asyncio.Semaphore(3)
+            await asyncio.gather(*(one(c, slots) for c in todo))
+            trash = sum(1 for c in self._list_clips() if (self._meta(c).get("dull_check") or {}).get("verdict") == "trash")
+            self.jobs["dullscan"] = {"state": "done", "error": "", "done": len(todo), "total": len(todo)}
+            log.info("🧹 checked %d clip%s: %d look like nothing happens", len(todo), "" if len(todo) == 1 else "s", trash)
+        asyncio.create_task(run())
+        return web.json_response({"ok": True, "total": len(todo)})
+
+    async def dull_results(self, request):
+        out = []
+        for clip in self._list_clips():
+            meta = self._meta(clip)
+            v = meta.get("dull_check")
+            if not v or meta.get("compilation"):
+                continue
+            out.append({**self._summary(clip), "verdict": v.get("verdict"), "score": v.get("score"),
+                        "why": v.get("why", ""), "what_happens": v.get("what_happens", ""), "by": v.get("by", "")})
+        order = {"trash": 0, "unsure": 1, "keep": 2}
+        out.sort(key=lambda x: (order.get(x["verdict"], 3), x["score"] if x["score"] is not None else 5))
+        return web.json_response({"clips": out, "job": self.jobs.get("dullscan", {"state": "none"})})
+
     async def compilation_plan(self, request):
         """The moments a Top N would use (chosen clips, or the biggest of the last 24 h), #1 first, each
         with the default part of the clip, for the Top 10 editor."""
@@ -1110,6 +1162,8 @@ class ClipperApp:
         r.add_post("/api/clip/render", self.rerender)
         r.add_get("/api/clip/job", self.job)
         r.add_post("/api/compilation", self.compilation)
+        r.add_post("/api/dull/scan", self.dull_scan)
+        r.add_get("/api/dull", self.dull_results)
         r.add_get("/api/compilation/plan", self.compilation_plan)
         r.add_get("/api/schedule", self.schedule_list)
         r.add_get("/api/phone-qr.svg", self.phone_qr)
