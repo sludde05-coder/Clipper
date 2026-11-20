@@ -204,7 +204,10 @@ async def recover_unfinished(cfg: Config) -> int:
             if leftover.name.endswith((".phone.mp4", ".rendering.mp4")):
                 base = leftover.name.replace(".phone.mp4", ".mp4").replace(".rendering.mp4", ".mp4")
                 if progress.get(base) is None:
-                    leftover.unlink(missing_ok=True)  # a half-made phone clip from last time
+                    try:
+                        leftover.unlink(missing_ok=True)  # a half-made phone clip from last time
+                    except OSError:
+                        pass  # still open in another program (Windows locks it): try again next start
                 continue
             if progress.get(leftover.name) is not None:
                 continue  # being made right now

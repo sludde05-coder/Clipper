@@ -352,8 +352,11 @@ async def upgrade_old_clips(clips_dir: Path) -> int:
             stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
         _, err = await proc.communicate()
         if proc.returncode == 0 and probe_video_duration(tmp) >= probe_video_duration(clip) - 1:
-            tmp.replace(clip)
-            done += 1
+            try:
+                tmp.replace(clip)
+                done += 1
+            except OSError:              # the clip is open somewhere (Windows locks it): upgrade it next time
+                tmp.unlink(missing_ok=True)
         else:
             tmp.unlink(missing_ok=True)
             log.warning("couldn't upgrade %s: %s", clip.name, err.decode(errors="replace")[-200:])

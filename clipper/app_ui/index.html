@@ -570,7 +570,9 @@
         <td class="num">${r.viewers ? r.viewers.toLocaleString() : "–"}</td>
         <td class="num">${r.chat_status === "needs_room"
           ? `<button class="btn" data-kickroom="${esc(r.key.split(":")[1].split("#")[0])}" title="Kick chat isn't connected: look up its chat-room number once">🔌 Connect chat</button>`
-          : r.chat}</td><td class="num">${r.normal}</td>
+          : (r.chat_status || "").startsWith("error")
+            ? `${r.chat}<div class="help" style="color:#ff6b6b;max-width:180px;text-align:right" title="${esc(r.chat_status)}">chat not connected</div>`
+            : r.chat_status === "connecting" ? `${r.chat}<div class="help">connecting…</div>` : r.chat}</td><td class="num">${r.normal}</td>
         <td>${r.peak ? "x" + r.peak : "–"} <span class="help">/ x${r.need || need}</span><span class="meter"><i style="width:${Math.min(100, (r.peak / (r.need || need)) * 100)}%"></i></span></td>
         <td class="num">${r.clips}</td>
         <td><button class="btn ghost" data-block="${esc(r.name)}" title="Never clip ${esc(r.name)} again (on any platform)">🚫 Block</button></td></tr>`).join("")}</table>`;

@@ -1174,6 +1174,8 @@ class ClipperApp:
                 log.info("🩹 finished %s left unfinished", "1 clip that was" if n == 1 else f"{n} clips that were")
             from .vertical import upgrade_old_clips
             await upgrade_old_clips(self.clips_dir)
+        except Exception as e:  # noqa: BLE001 - e.g. a file Windows has locked: carry on, retry next start
+            log.warning("couldn't finish tidying up clips from last time (%s); it tries again next start", e)
         finally:
             self.jobs["__recovery__"] = {"state": "done", "error": ""}
 

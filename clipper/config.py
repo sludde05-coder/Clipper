@@ -91,7 +91,7 @@ class Credentials:
     kick_client_id: str = ""
     kick_client_secret: str = ""
     kick_category_id: int = 0
-    kick_pusher_key: str = "32cbd69e4b950bf97679"
+    kick_pusher_key: str = "34bf7a0ff419a2a775b9"   # Kick's chat key since Oct 2026 (looked up at connect too)
     kick_pusher_cluster: str = "us2"
     kick_chatrooms: list[str] = field(default_factory=list)   # "slug#chatroom id", found once (see the app)
 
