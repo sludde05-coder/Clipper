@@ -137,6 +137,9 @@ class ClipperApp:
         self.quit_event = asyncio.Event()
         self.needs_restart = False
         self._autoposter = None
+        self._summaries: dict[str, tuple] = {}
+        from .media import Warmer
+        self._warmer = Warmer(self.clips_dir)
 
     # ------------------------------------------------------------ paths
 
@@ -377,6 +380,23 @@ class ClipperApp:
         return sorted(out, key=newest, reverse=True)
 
     def _summary(self, clip: Path) -> dict:
+        """One clip for the lists, remembered until the clip or its details change (reading every
+        clip's details on each refresh is what made big libraries slow)."""
+        cid = self._id(clip)
+        try:
+            d = self._details(clip)
+            key = (clip.stat().st_mtime_ns, d.stat().st_mtime_ns if d.exists() else 0)
+        except OSError:
+            key = None
+        hit = self._summaries.get(cid)
+        if key is not None and hit and hit[0] == key:
+            return {**hit[1], "rendering": self.jobs.get(cid, {}).get("state") == "running"}
+        out = self._summary_fresh(clip)
+        if key is not None:
+            self._summaries[cid] = (key, out)
+        return out
+
+    def _summary_fresh(self, clip: Path) -> dict:
         meta = self._meta(clip)
         m = NAME_RE.match(clip.stem)
         cid = self._id(clip)
@@ -391,12 +411,15 @@ class ClipperApp:
             "added": clip.stat().st_mtime,
             "video": f"/media?id={quote(cid)}&v={int(clip.stat().st_mtime)}",
             "thumb": f"/thumb?id={quote(cid)}&v={int(clip.stat().st_mtime)}",
+            "preview": f"/preview?id={quote(cid)}&v={int(clip.stat().st_mtime)}",
             "rendering": self.jobs.get(cid, {}).get("state") == "running",
         }
 
     async def clips(self, request):
         clips = []
-        for c in self._list_clips():
+        listed = self._list_clips()
+        self._warmer.want(listed[:30])          # thumbs and phone previews of the newest clips, ahead of time
+        for c in listed:
             try:
                 clips.append(self._summary(c))
             except (OSError, ValueError) as e:  # e.g. a file that's being moved right now
@@ -631,6 +654,8 @@ class ClipperApp:
             meta = compilation.load_meta(it["clip"])
             cid = self._id(it["clip"])
             out.append({"id": cid, "start": it["start"], "end": it["end"], "length": it["length"],
+                        "thumb": f"/thumb?id={quote(cid)}&v={int(it['clip'].stat().st_mtime)}",
+                        "preview": f"/preview?id={quote(cid)}&v={int(it['clip'].stat().st_mtime)}",
                         "name": meta.get("name") or it["clip"].parent.parent.name, "platform": meta.get("platform", ""),
                         "hook": (meta.get("captions") or {}).get("hook", ""),
                         "explosion_offset": meta.get("explosion_offset"),
@@ -679,12 +704,15 @@ class ClipperApp:
             except ValueError:
                 when = schedule.next_slot(self.clips_dir, self.cfg.post.top_times)
         gap = max(1, int(body.get("gap") or self.cfg.post.part_gap))
-        self.jobs["compilation"] = {"state": "running", "error": ""}
+        self.jobs["compilation"] = {"state": "running", "error": "", "progress": 0.0}
+
+        def progress_(frac: float) -> None:
+            self.jobs["compilation"]["progress"] = round(frac, 3)
 
         async def run():
             try:
                 made = await compilation.build(self.clips_dir, items, title, self.cfg.vertical.font, split=split,
-                                               music=music, sfx=sfx)
+                                               music=music, sfx=sfx, on_progress=progress_)
                 if when is not None:
                     for k, out in enumerate(made):
                         at = when + timedelta(minutes=gap * k)
@@ -1047,20 +1075,32 @@ class ClipperApp:
         return web.FileResponse(self._clip(request.query.get("id", "")), headers={"Cache-Control": "no-store"})
 
     async def thumb(self, request):
+        from . import media
         cid = request.query.get("id", "")
         clip = self._bin_clip(cid) if request.query.get("deleted") else self._clip(cid)
-        cache = self.clips_dir / ".thumbs"
-        cache.mkdir(parents=True, exist_ok=True)
-        out = cache / (clip.parent.parent.name + "__" + clip.stem + ".jpg")
-        if not out.exists() or out.stat().st_mtime < clip.stat().st_mtime:
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "1.5", "-i", str(clip),
-                "-frames:v", "1", "-vf", "scale=270:-2", "-q:v", "4", str(out),
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, **NO_WINDOW)
-            await proc.wait()
-        if not out.exists():
+        out = await media.thumb(self.clips_dir, clip)          # two at a time at most, low priority
+        if out is None:
             raise web.HTTPNotFound()
-        return web.FileResponse(out)
+        return web.FileResponse(out, headers={"Cache-Control": "max-age=86400"})
+
+    async def preview(self, request):
+        """The small video for phones (540x960). If it isn't made yet, the full clip plays this time
+        and the small one is made in the background for next time."""
+        from . import media
+        clip = self._clip(request.query.get("id", ""))
+        ready = media.preview_ready(self.clips_dir, clip)
+        if ready is None:
+            self._warmer.want([clip], urgent=True)
+            return web.FileResponse(clip, headers={"Cache-Control": "no-store"})
+        return web.FileResponse(ready, headers={"Cache-Control": "max-age=86400"})
+
+    async def settings_phone(self, request):
+        """Settings for the phone app: everything except keys and secrets."""
+        resp = await self.settings(request)
+        data = json.loads(resp.body)
+        data["fields"] = [f for f in data["fields"] if f["section"] not in ("twitch", "youtube", "kick", "anthropic", "phone")
+                          and f["kind"] != "secret"]
+        return web.json_response(data)
 
     # ------------------------------------------------------------ settings
 
@@ -1195,6 +1235,7 @@ class ClipperApp:
         r.add_post("/api/kick/chatroom", self.kick_chatroom)
         r.add_get("/api/clips", self.clips)
         r.add_get("/api/clip", self.clip_detail)
+        r.add_get("/preview", self.preview)
         r.add_post("/api/clip/post-captions", self.save_post)
         r.add_post("/api/clip/render", self.rerender)
         r.add_get("/api/clip/job", self.job)

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import naming
 from .captions import ass_color, clean, ts
-from .proc import NO_WINDOW
+from .proc import BACKGROUND, NO_WINDOW
 from .vertical import ENCODE_TIMEOUT, PLATFORM_AUDIO, PLATFORM_VIDEO, probe_duration, probe_video_duration
 
 log = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ def _badges_ass(parts: list[dict], title: str | None, font: str) -> str:
 
 
 async def make(items: list[dict], out: Path, title: str, font: str = "Arial",
-               music: Path | None = None, sfx: bool = False) -> tuple[Path, list[dict]]:
+               music: Path | None = None, sfx: bool = False, on_progress=None) -> tuple[Path, list[dict]]:
     """Make one countdown video. items = [{"clip", "start", "end", "rank"}] in the order they're shown
     (highest rank number first, #1 last). music: a song or loop played very quietly under everything;
     sfx: a whoosh into every new number."""
@@ -195,18 +195,32 @@ async def make(items: list[dict], out: Path, title: str, font: str = "Arial",
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp_out = out.with_name(out.stem + ".rendering.mp4")
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args,
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostats", "-y", *args,
             "-filter_complex", ";".join(graph), "-map", "[v]", "-map", audio,
             *PLATFORM_VIDEO, "-preset", "medium", "-crf", "20", *PLATFORM_AUDIO,
-            "-movflags", "+faststart", str(tmp_out.resolve()),
-            cwd=tmp, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
+            "-movflags", "+faststart", "-progress", "pipe:1", str(tmp_out.resolve()),
+            cwd=tmp, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, **BACKGROUND)
+
+        async def watch() -> bytes:
+            errs = asyncio.ensure_future(proc.stderr.read())
+            async for line in proc.stdout:          # "out_time_us=12345678" lines: how far it got
+                if on_progress and line.startswith(b"out_time_us="):
+                    try:
+                        on_progress(min(1.0, int(line.split(b"=")[1]) / 1e6 / max(at, 1)))
+                    except ValueError:
+                        pass
+            await proc.wait()
+            return await errs
         try:
-            _, err = await asyncio.wait_for(proc.communicate(), ENCODE_TIMEOUT)
+            err = await asyncio.wait_for(watch(), ENCODE_TIMEOUT)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
             tmp_out.unlink(missing_ok=True)
             raise RuntimeError("making the compilation took too long and was stopped")
+        except asyncio.CancelledError:
+            proc.kill()
+            raise
         if proc.returncode != 0 or probe_video_duration(tmp_out) < at - 2:
             tmp_out.unlink(missing_ok=True)
             raise RuntimeError(f"ffmpeg couldn't make the compilation: {err.decode(errors='replace')[-300:]}")
@@ -247,14 +261,26 @@ async def plan_items(clips: list[Path], ranked: bool = True) -> list[dict]:
         clips = sorted(clips, key=lambda c: strength(load_meta(c)), reverse=True)
     items = []
     for c in clips[:10]:
-        length = await asyncio.to_thread(probe_video_duration, c) or await asyncio.to_thread(probe_duration, c)
+        length = await clip_length(c)
         start, end = window(load_meta(c), length)
         items.append({"clip": c, "start": start, "end": end, "length": round(length, 2)})
     return items
 
 
+_lengths: dict[tuple[str, int], float] = {}
+
+
+async def clip_length(clip: Path) -> float:
+    """A clip's length in seconds (remembered until the file changes: asking ffprobe is slow on some PCs)."""
+    key = (str(clip), clip.stat().st_mtime_ns)
+    if key not in _lengths:
+        _lengths[key] = await asyncio.to_thread(probe_video_duration, clip) or await asyncio.to_thread(probe_duration, clip)
+    return _lengths[key]
+
+
 async def build(clips_dir: Path, items: list[dict], title: str = "", font: str = "Arial",
-                split: bool = False, music: Path | str | None = None, sfx: bool = False) -> list[Path]:
+                split: bool = False, music: Path | str | None = None, sfx: bool = False,
+                on_progress=None) -> list[Path]:
     """Make a countdown from items (#1 first: [{"clip", "start", "end"}]) and file it in clips/Top moments/,
     ready to post like any other clip. split=True makes two videos: the lower half of the ranking
     (e.g. #10-#6) as Part 1 and the top half (#5-#1) as Part 2. Returns the videos, Part 1 first."""
@@ -265,7 +291,7 @@ async def build(clips_dir: Path, items: list[dict], title: str = "", font: str =
     title = title.strip() or default_title(n)
     ranked = [{**it, "rank": i + 1} for i, it in enumerate(items)]
     for it in ranked:
-        length = await asyncio.to_thread(probe_video_duration, it["clip"]) or await asyncio.to_thread(probe_duration, it["clip"])
+        length = await clip_length(it["clip"])
         start = min(max(0.0, float(it.get("start") or 0)), max(0.0, length - 1))
         end = float(it.get("end") or length)
         it["start"], it["end"] = round(start, 2), round(min(length, max(start + 1, end)), 2)
@@ -288,7 +314,8 @@ async def build(clips_dir: Path, items: list[dict], title: str = "", font: str =
     for gi, (group, gtitle) in enumerate(groups):
         number = naming.next_number(folder)
         out = folder / naming.PHONE / f"Top_moments_{stamp}_{number}.mp4"
-        out, parts = await make(group, out, gtitle, font, music=song, sfx=sfx)
+        part_progress = (lambda f, gi=gi: on_progress((gi + f) / len(groups))) if on_progress else None
+        out, parts = await make(group, out, gtitle, font, music=song, sfx=sfx, on_progress=part_progress)
         naming.commit_number(folder, number)
         note = ""
         if len(groups) == 2:

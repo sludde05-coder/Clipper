@@ -44,6 +44,14 @@ LIBRARY = [
     ("GET", "/lib/compilation/plan", "compilation_plan"), ("POST", "/lib/compilation", "compilation"),
     ("GET", "/lib/job", "job"),
     ("GET", "/media", "media"), ("GET", "/thumb", "thumb"), ("GET", "/api/cover", "cover"),
+    ("GET", "/preview", "preview"),
+    # control: start/stop, streams, block, top N + links, activity, settings (no keys), re-render a clip
+    ("GET", "/lib/state", "state"), ("POST", "/lib/clipping/start", "start_clipping"),
+    ("POST", "/lib/clipping/stop", "stop_clipping"), ("POST", "/lib/block", "block"),
+    ("POST", "/lib/clipping/targets", "clipping_targets"), ("GET", "/lib/log", "logs_since"),
+    ("GET", "/lib/settings", "settings_phone"), ("POST", "/lib/settings", "save_settings"),
+    ("POST", "/lib/clip/render", "rerender"), ("GET", "/lib/schedule", "schedule_list"),
+    ("POST", "/lib/schedule/cancel", "schedule_cancel"),
 ]
 
 

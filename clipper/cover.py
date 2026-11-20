@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import VerticalConfig
 from .director import Plan
-from .proc import NO_WINDOW
+from .proc import BACKGROUND, NO_WINDOW
 from .vertical import (WEBCAM_LAYOUTS, facecam_geometry, filter_graph, probe_duration, probe_size, resolve_layout,
                        with_headline, write_captions)
 

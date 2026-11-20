@@ -584,30 +584,28 @@ The `buffer` folder is temporary video the app deletes as it goes. You can ignor
 
 ---
 
-### Posting from your phone (the phone app)
+### The phone app
 
-The phone app shows the clips in your `POST` folder on your phone. You post them from the phone, and they move
-to `POST/posted` on your PC when you're done.
+With the Clipper app open on your PC, the phone app does nearly everything the PC app does:
+- **🎬 Clips:** swipe through your clips like TikTok (small preview versions, so it's smooth on Wi-Fi or mobile
+  data). On each clip: **Post** (Clipper's caption per platform, Save/Share video, Mark as posted), **Edit**
+  (headline, layout, colour, spoken captions, then re-render on the PC), **🏆** (pick it for a Top 10),
+  **Delete** (to Deleted clips on the PC) and **Sound**.
+- **🎥 Clipping:** start and stop clipping, set the top N and your own streamers (links), see the streams being
+  clipped with their chat speed, block a streamer, and the activity log.
+- **🏆 Top 10:** today's Top 10 or Top 5, or one from your picks: pick the part of each moment in one player,
+  change the order, split into 2 parts, music and whoosh, with a progress bar while the PC makes it.
+- **⚙️ Settings:** everything except keys and passwords (those stay on the PC).
 
 **Connect your phone (once):**
-1. On your PC, open the clipper menu and choose **8) Phone app**. A page with a **QR code** opens.
+1. On your PC, in Clipper, go to **Posting**: the **📱 Phone app** card has a **QR code**.
 2. **Windows asks whether Python may use networks:** tick **Private networks** and click **Allow**.
    Without this, the phone can't connect.
-3. Make sure your phone is on the **same Wi-Fi** as your PC. Open the phone's **camera**, point it at the
-   QR code, and tap the link.
+3. Open the phone's **camera**, point it at the QR code, and tap the link. (At home on the same Wi-Fi, or anywhere
+   with Tailscale, see below.)
 4. Add it to your home screen so it opens like an app:
    - **iPhone** (Safari): tap Share **⬆︎** → **Add to Home Screen** → Add.
    - **Android** (Chrome): tap **⋮** → **Add to Home screen** (or **Install app**).
-
-**Posting a clip:**
-1. On the PC, copy a clip from a streamer's `Phone clips` folder into the `POST` folder. The app shows it within a few seconds.
-   The app works whenever the clipper is clipping (options 1, 3, 4) or while option 8 is open.
-2. In the app, tap the clip. For each platform you get:
-   - **Share to TikTok/Instagram/YouTube** (or **Save video**, see below): puts the video into the app.
-   - **Copy caption** (YouTube: **Copy title** and **Copy description**), written for that platform.
-     Sharing copies the caption automatically, so you just paste it.
-   - **Mark as posted** once it's up.
-3. Tap **Done: move to Posted**. The clip moves to `POST/posted` on your PC, and the log notes where it went.
 
 **"Share" or "Save video"?** Phones only allow sharing a video straight into another app from a secure (https)
 connection. At home over Wi-Fi the app uses plain http, so you'll usually see **Save video**:

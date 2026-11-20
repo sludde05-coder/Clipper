@@ -20,7 +20,7 @@ from .director import hook_is_weak, Plan, claude_plan, rule_plan
 from .transcribe import Transcript, transcribe
 from .transcribe import Word
 from .editors import default_trim, facecam_editor, post_editor, review_editor, trim_editor
-from .proc import NO_WINDOW
+from .proc import BACKGROUND, NO_WINDOW
 from . import progress
 
 log = logging.getLogger(__name__)
@@ -232,7 +232,7 @@ async def _encode(clip: Path, out: Path, tmp: str, cfg: VerticalConfig, focus_x:
         "-map", "[v]", "-map", "0:a?", *audio,
         *PLATFORM_VIDEO, "-preset", cfg.preset, "-crf", str(cfg.crf),
         *PLATFORM_AUDIO, "-movflags", "+faststart", str(out.resolve()),
-        cwd=tmp, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
+        cwd=tmp, stderr=asyncio.subprocess.PIPE, **BACKGROUND)
     try:
         _, err = await asyncio.wait_for(proc.communicate(), ENCODE_TIMEOUT)
     except asyncio.TimeoutError:
@@ -291,7 +291,7 @@ async def _cut(clip: Path, start: float, end: float) -> bool:
         "-t", f"{end - start:.3f}", "-map", "0:v?", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp),
-        stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
+        stderr=asyncio.subprocess.PIPE, **BACKGROUND)
     try:
         _, err = await asyncio.wait_for(proc.communicate(), ENCODE_TIMEOUT)
     except asyncio.TimeoutError:
@@ -349,7 +349,7 @@ async def upgrade_old_clips(clips_dir: Path) -> int:
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(clip),
             *PLATFORM_VIDEO, "-preset", "medium", "-crf", "17", *PLATFORM_AUDIO, "-movflags", "+faststart", str(tmp),
-            stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
+            stderr=asyncio.subprocess.PIPE, **BACKGROUND)
         _, err = await proc.communicate()
         if proc.returncode == 0 and probe_video_duration(tmp) >= probe_video_duration(clip) - 1:
             try:
