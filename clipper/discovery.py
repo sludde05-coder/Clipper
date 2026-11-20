@@ -161,7 +161,37 @@ class Discovery:
             except ValueError as e:
                 self._warn_once(f"pin:{t}", f"skipping {t!r} in \"always clip\": {e}")
         keys, people = {s.key for s in ranked}, {person_key(s) for s in ranked}
-        return ranked + [p for p in pinned if p.key not in keys and person_key(p) not in people]
+        extra = [p for p in pinned if p.key not in keys and person_key(p) not in people]
+        if any(p.platform == "kick" for p in extra) and "kick" in d.platforms:
+            try:
+                extra = await self._kick_pinned(extra)
+            except Exception as e:  # noqa: BLE001
+                log.debug("kick channel info: %s", e)
+        return ranked + extra
+
+    async def _kick_pinned(self, streams: list[Stream]) -> list[Stream]:
+        """Viewers and title for your own Kick streamers, from Kick's official API, and a note when one is
+        live in another category than the game (that's why they aren't in the top list)."""
+        h = await self._kick_headers()
+        if not h:
+            return streams
+        slugs = [s.channel.split("#")[0] for s in streams if s.platform == "kick"]
+        j = await self._kick_get("/v1/channels", [("slug", sl) for sl in slugs], h)
+        info = {str(c.get("slug", "")).lower(): c for c in j.get("data") or [] if isinstance(c, dict)}
+        out = []
+        for s in streams:
+            c = info.get(s.channel.split("#")[0]) if s.platform == "kick" else None
+            if not c:
+                out.append(s)
+                continue
+            live = (c.get("stream") or {})
+            cat = (c.get("category") or {}).get("name", "")
+            if live.get("is_live") and cat and not is_game(cat, self._kick_wanted()):
+                self._warn_once(f"kickcat:{s.channel}:{cat}", f"Kick: {s.channel} is live in \"{cat}\", not "
+                                f"{self.cfg.discovery.game}, so they're not in the top list (still clipped as yours)")
+            out.append(Stream(s.platform, s.channel, s.url, int(live.get("viewer_count") or 0),
+                              c.get("stream_title") or s.title, s.display_name or c.get("slug") or s.channel))
+        return out
 
     def _report(self, counts: dict[str, int], found: list[Stream], ranked: list[Stream]) -> None:
         """Say what each platform found, and why a platform's streams didn't make the top (if they didn't)."""

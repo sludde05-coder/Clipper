@@ -243,6 +243,8 @@ class ClipperApp:
             from .__main__ import ALIASES
             cfg = replace(cfg, discovery=replace(cfg.discovery, game=game,
                                                  search_terms=[game, *ALIASES.get(game.lower(), [])]))
+        from .chat.kick import load_rooms
+        load_rooms(cfg.creds.kick_chatrooms)
         self.orch = Orchestrator(cfg, self.config_path, start_phone=False, log_status=False)
         if mode == "watch":
             targets = [t for t in re.split(r"[\s,]+", body.get("targets", "")) if t]
@@ -260,6 +262,32 @@ class ClipperApp:
                         (f" + {len(cfg.discovery.always_track)} of yours" if cfg.discovery.always_track else "")
         log.info("▶  %s", self.mode)
         return web.json_response({"ok": True})
+
+    async def kick_open(self, request):
+        """Open the Kick page with a channel's chat-room number in the default browser."""
+        body = await request.json()
+        slug = re.sub(r"[^a-z0-9_-]", "", str(body.get("slug", "")).lower().split("#")[0])
+        if not slug:
+            raise web.HTTPBadRequest(text="no channel")
+        webbrowser.open(f"https://kick.com/api/v2/channels/{slug}")
+        return web.json_response({"ok": True})
+
+    async def kick_chatroom(self, request):
+        """Save a Kick channel's chat-room number (typed, or read from the pasted page)."""
+        from .chat import kick
+        body = await request.json()
+        slug = re.sub(r"[^a-z0-9_-]", "", str(body.get("slug", "")).lower().split("#")[0])
+        room = kick.room_from_text(str(body.get("text", "")))
+        if not slug or room is None:
+            return web.json_response({"error": "Couldn't find the chat-room number in that. In the browser page, press "
+                                               "Ctrl+A then Ctrl+C, and paste all of it here."}, status=400)
+        kick.ROOMS[slug] = room
+        entries = [e for e in self.cfg.creds.kick_chatrooms if e.split("#")[0].lower() != slug] + [f"{slug}#{room}"]
+        path = Path(self.config_path)
+        path.write_text(set_value(path.read_text(encoding="utf-8"), "kick", "chatrooms", entries), encoding="utf-8")
+        self.cfg.creds.kick_chatrooms = entries
+        log.info("💬 kick:%s chat-room %s saved: its chat connects in a few seconds", slug, room)
+        return web.json_response({"ok": True, "room": room})
 
     async def clipping_targets(self, request):
         """How many top streams to clip, and links to streamers that are always clipped too.
@@ -1161,6 +1189,8 @@ class ClipperApp:
         r.add_post("/api/clipping/stop", self.stop_clipping)
         r.add_post("/api/block", self.block)
         r.add_post("/api/clipping/targets", self.clipping_targets)
+        r.add_post("/api/kick/open", self.kick_open)
+        r.add_post("/api/kick/chatroom", self.kick_chatroom)
         r.add_get("/api/clips", self.clips)
         r.add_get("/api/clip", self.clip_detail)
         r.add_post("/api/clip/post-captions", self.save_post)

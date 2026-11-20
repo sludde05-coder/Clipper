@@ -236,3 +236,29 @@ def test_always_clip_streamers_come_on_top_without_doubling_up():
     top = asyncio.run(Discovery(cfg, FakeSession()).top_streams())
     # en1 is already the top stream, so only adinross is added; the bad entry is skipped with a warning
     assert [t.key for t in top] == ["twitch:en1", "kick:adinross"]
+
+
+
+def test_pinned_kick_streamer_gets_live_info_and_a_note_about_the_category(caplog):
+    import logging
+
+    class S(KickV2Session):
+        def get(self, url, params=None, **k):
+            if url.endswith("/v1/channels"):
+                self.calls.append((url, params))
+                return FakeResp({"data": [{"slug": "xqc", "stream_title": "GTA 6 w/ the boys",
+                                           "category": {"id": 15, "name": "Just Chatting"},
+                                           "stream": {"is_live": True, "viewer_count": 40123}}]})
+            return super().get(url, params, **k)
+    caplog.set_level(logging.WARNING)
+    cfg = Config()
+    cfg.discovery.platforms = ["kick"]
+    cfg.discovery.top_n = 1
+    cfg.discovery.always_track = ["https://kick.com/xqc"]
+    cfg.creds.kick_client_id = cfg.creds.kick_client_secret = "x"
+    s = S()
+    s.category_name = "Grand Theft Auto VI"
+    top = asyncio.run(Discovery(cfg, s).top_streams())
+    adin = [t for t in top if t.channel == "xqc"][0]
+    assert adin.viewers == 40123 and adin.title == "GTA 6 w/ the boys"
+    assert "live in \"Just Chatting\"" in " ".join(r.getMessage() for r in caplog.records)

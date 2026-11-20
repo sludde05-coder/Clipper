@@ -32,7 +32,7 @@ class Orchestrator:
         stopping = [self.sessions.pop(k) for k in keys if k in self.sessions]
         await asyncio.gather(*(s.stop() for s in stopping), return_exceptions=True)
 
-    def status_rows(self) -> list[dict]:
+    def status_rows(self) -> list[dict]:  # noqa: D102
         rows = []
         for key, s in self.sessions.items():
             rows.append({"key": key, "platform": s.stream.platform,
@@ -40,7 +40,8 @@ class Orchestrator:
                          "viewers": s.stream.viewers, "title": s.stream.title, "video": s.recorder.live,
                          "chat": round(s.detector.last_rate, 1), "normal": round(s.detector.last_baseline, 1),
                          "peak": round(s.detector.peak_ratio(), 1), "need": round(s.detector.required_ratio(), 1),
-                         "clips": s.clips_saved})
+                         "clips": s.clips_saved,
+                         "chat_status": _chat_status(s.stream)})
         return rows
 
     async def stop_all(self) -> None:
@@ -123,3 +124,10 @@ class Orchestrator:
             while True:
                 await asyncio.sleep(30)
                 self.status()
+
+
+def _chat_status(stream) -> str:
+    if stream.platform != "kick":
+        return ""
+    from .chat.kick import STATUS
+    return STATUS.get(stream.channel.split("#")[0].lower(), "")

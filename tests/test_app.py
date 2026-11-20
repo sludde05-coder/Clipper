@@ -448,3 +448,24 @@ def test_top_n_and_always_clip_links_are_saved(tmp_path):
     run(conf, fn)
     saved = tomllib.loads(conf.read_text(encoding="utf-8"))["discovery"]
     assert saved["top_n"] == 5 and saved["always_track"][0] == "https://www.twitch.tv/kaicenat"
+
+
+
+def test_kick_chat_room_is_saved_from_the_pasted_page(tmp_path, monkeypatch):
+    import tomllib
+
+    from clipper.chat import kick
+    conf, *_ = make_library(tmp_path)
+    opened = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url))
+
+    async def fn(c, app):
+        await c.post("/api/kick/open", headers=H, json={"slug": "AdinRoss"})
+        assert opened == ["https://kick.com/api/v2/channels/adinross"]
+        r = await c.post("/api/kick/chatroom", headers=H, json={"slug": "adinross",
+                                                               "text": '{"slug":"adinross","chatroom":{"id":668}}'})
+        assert (await r.json())["room"] == 668 and kick.ROOMS["adinross"] == 668
+        bad = await c.post("/api/kick/chatroom", headers=H, json={"slug": "adinross", "text": "hello"})
+        assert bad.status == 400
+    run(conf, fn)
+    assert tomllib.loads(conf.read_text(encoding="utf-8"))["kick"]["chatrooms"] == ["adinross#668"]

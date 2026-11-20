@@ -48,6 +48,7 @@ api_key = ""
 [kick]     # https://kick.com/settings/developer → create app
 client_id = ""
 client_secret = ""
+chatrooms = []          # Kick chat-room numbers, e.g. ["adinross#123456"]: the app's "Connect chat" fills these in
 category_id = 0         # set if Kick names the GTA 6 category differently
 
 [vertical]              # phone version (9:16) with captions, made for every clip

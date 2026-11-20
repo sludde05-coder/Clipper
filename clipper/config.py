@@ -93,6 +93,7 @@ class Credentials:
     kick_category_id: int = 0
     kick_pusher_key: str = "32cbd69e4b950bf97679"
     kick_pusher_cluster: str = "us2"
+    kick_chatrooms: list[str] = field(default_factory=list)   # "slug#chatroom id", found once (see the app)
 
 
 @dataclass
