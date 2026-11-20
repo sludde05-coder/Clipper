@@ -117,9 +117,12 @@ def _badges_ass(parts: list[dict], title: str | None, font: str) -> str:
     return "\n".join(out) + "\n"
 
 
-async def make(items: list[dict], out: Path, title: str, font: str = "Arial") -> tuple[Path, list[dict]]:
+async def make(items: list[dict], out: Path, title: str, font: str = "Arial",
+               music: Path | None = None, sfx: bool = False) -> tuple[Path, list[dict]]:
     """Make one countdown video. items = [{"clip", "start", "end", "rank"}] in the order they're shown
-    (highest rank number first, #1 last)."""
+    (highest rank number first, #1 last). music: a song or loop played very quietly under everything;
+    sfx: a whoosh into every new number."""
+    from . import soundtrack
     from .headline import render
     order = [it["clip"] for it in items]
     with tempfile.TemporaryDirectory() as tmp:
@@ -165,11 +168,35 @@ async def make(items: list[dict], out: Path, title: str, font: str = "Arial") ->
         (tmpd / "badges.ass").write_text(_badges_ass(parts, None if size else title, font), encoding="utf-8")
         graph.append("".join(labels) + f"concat=n={len(labels)}:v=1:a=1[cv][ca]")
         graph.append("[cv]ass=badges.ass[v]")
+        mix = ["[ca]"]
+        if music is not None:
+            # Very low: about 20 dB under the streamers' voices, fading in and out.
+            args += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
+            graph.append(f"[{idx}:a]aformat=sample_fmts=fltp:channel_layouts=stereo,aresample=48000,"
+                         f"atrim=0:{at:.2f},asetpts=N/SR/TB,loudnorm=I=-36:TP=-9:LRA=7,aresample=48000,"
+                         f"afade=t=in:d=1.5,afade=t=out:st={max(0.0, at - 2.5):.2f}:d=2.5[mus]")
+            mix.append("[mus]")
+            idx += 1
+        if sfx and parts:
+            whoosh = await asyncio.to_thread(soundtrack.make_whoosh, tmpd / "whoosh.wav")
+            args += ["-i", str(whoosh)]
+            graph.append(f"[{idx}:a]aformat=sample_fmts=fltp:channel_layouts=stereo,aresample=48000,"
+                         f"asplit={len(parts)}" + "".join(f"[w{i}]" for i in range(len(parts))))
+            for i, p in enumerate(parts):          # peaks right on the cut to each new number
+                ms = max(0, int((p["at"] - soundtrack.WHOOSH_PEAK) * 1000))
+                graph.append(f"[w{i}]adelay={ms}|{ms},volume=0.8[wd{i}]")
+                mix.append(f"[wd{i}]")
+            idx += 1
+        audio = "[ca]"
+        if len(mix) > 1:
+            graph.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:dropout_transition=0:normalize=0,"
+                         "alimiter=limit=0.95[aout]")
+            audio = "[aout]"
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp_out = out.with_name(out.stem + ".rendering.mp4")
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args,
-            "-filter_complex", ";".join(graph), "-map", "[v]", "-map", "[ca]",
+            "-filter_complex", ";".join(graph), "-map", "[v]", "-map", audio,
             *PLATFORM_VIDEO, "-preset", "medium", "-crf", "20", *PLATFORM_AUDIO,
             "-movflags", "+faststart", str(tmp_out.resolve()),
             cwd=tmp, stderr=asyncio.subprocess.PIPE, **NO_WINDOW)
@@ -227,7 +254,7 @@ async def plan_items(clips: list[Path], ranked: bool = True) -> list[dict]:
 
 
 async def build(clips_dir: Path, items: list[dict], title: str = "", font: str = "Arial",
-                split: bool = False) -> list[Path]:
+                split: bool = False, music: Path | str | None = None, sfx: bool = False) -> list[Path]:
     """Make a countdown from items (#1 first: [{"clip", "start", "end"}]) and file it in clips/Top moments/,
     ready to post like any other clip. split=True makes two videos: the lower half of the ranking
     (e.g. #10-#6) as Part 1 and the top half (#5-#1) as Part 2. Returns the videos, Part 1 first."""
@@ -250,11 +277,18 @@ async def build(clips_dir: Path, items: list[dict], title: str = "", font: str =
         groups = [(shown, title)]
     folder = Path(clips_dir) / FOLDER
     made = []
+    music_dir = tempfile.TemporaryDirectory()
+    song: Path | None = None
+    if music == "made":                       # a fresh lo-fi loop, the same one for both parts
+        from .soundtrack import make_music
+        song = await asyncio.to_thread(make_music, Path(music_dir.name) / "music.wav")
+    elif music:
+        song = Path(music)
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     for gi, (group, gtitle) in enumerate(groups):
         number = naming.next_number(folder)
         out = folder / naming.PHONE / f"Top_moments_{stamp}_{number}.mp4"
-        out, parts = await make(group, out, gtitle, font)
+        out, parts = await make(group, out, gtitle, font, music=song, sfx=sfx)
         naming.commit_number(folder, number)
         note = ""
         if len(groups) == 2:
@@ -272,4 +306,5 @@ async def build(clips_dir: Path, items: list[dict], title: str = "", font: str =
         details.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
         log.info("🏆 made %s: %s", out.name, ", ".join(f"#{p['rank']} {p['name']}" for p in parts))
         made.append(out)
+    music_dir.cleanup()
     return made

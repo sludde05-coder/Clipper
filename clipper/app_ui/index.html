@@ -464,6 +464,8 @@
     <div class="list" id="cp-list"></div>
     <div class="foot">
       <label class="row" style="gap:8px"><input type="checkbox" id="cp-split"> <span id="cp-splitlabel">Split into 2 videos</span></label>
+      <label class="row" style="gap:8px"><input type="checkbox" id="cp-music"> 🎵 Music</label>
+      <label class="row" style="gap:8px"><input type="checkbox" id="cp-sfx"> 💥 Whoosh</label>
       <label class="row" style="gap:8px"><input type="checkbox" id="cp-sched"> <span id="cp-schedlabel">Post it at</span></label>
       <input type="datetime-local" id="cp-at">
       <span class="row" id="cp-gaprow" style="gap:6px">, Part 2 <input type="number" id="cp-gap" min="1" style="width:70px"> minutes later</span>
@@ -793,6 +795,7 @@
     $("#cp-count").hidden = !!ids.length;
     $$("#cp-count button").forEach(b => b.classList.toggle("on", +b.dataset.n === count));
     $("#cp-split").checked = plan.items.length >= 6;
+    $("#cp-music").checked = plan.music !== false; $("#cp-sfx").checked = plan.sfx !== false;
     $("#cp-sched").checked = plan.autosubmit;
     $("#cp-sched").disabled = !plan.autosubmit;
     $("#cp-schednote").hidden = plan.autosubmit;
@@ -859,7 +862,8 @@
   $("#cp-make").onclick = async () => {
     const split = $("#cp-split").checked && comp.items.length >= 4, sched = $("#cp-sched").checked;
     const body = { items: comp.items.map(it => ({ id: it.id, start: it.start, end: it.end })), title: $("#cp-title").value,
-                   split, schedule: sched, at: $("#cp-at").value, gap: +$("#cp-gap").value || comp.gap };
+                   split, schedule: sched, at: $("#cp-at").value, gap: +$("#cp-gap").value || comp.gap,
+                   music: $("#cp-music").checked, sfx: $("#cp-sfx").checked };
     let r;
     try { r = await api("/api/compilation", body); } catch (e) { return toast(e.message, 6000); }
     $("#cp-close").onclick();

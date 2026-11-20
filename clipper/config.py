@@ -40,6 +40,8 @@ class ClipConfig:
 @dataclass
 class VerticalConfig:
     enabled: bool = True           # also render a 9:16 captioned version of each clip
+    top_music: bool = True         # very quiet background music under Top 10s
+    top_sfx: bool = True           # a whoosh into every new number of a Top 10
     layout: str = "auto"           # "auto": webcam on top when there is one, else "blur"; or "facecam",
                                    # "facecam_full" (webcam on top, whole screen below over a blur), "blur", "crop"
     ai_editors: bool = True        # the 5 AI editors (trim, webcam, captions, post text, review); needs ai_captions

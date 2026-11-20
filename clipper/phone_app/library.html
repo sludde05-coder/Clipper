@@ -486,7 +486,8 @@
     catch (e) { return toast(e.message, 4000); }
     if (plan.items.length < 2) return toast("Not enough clips from the last 24 hours yet (it needs at least 2)", 4000);
     if (screen !== "top") history.pushState({ s: "top" }, "", "#top");
-    comp = { ids, items: plan.items, title: plan.title, split: plan.items.length >= 6 };
+    comp = { ids, items: plan.items, title: plan.title, split: plan.items.length >= 6,
+             music: plan.music !== false, sfx: plan.sfx !== false };
     showPage("🏆 Top"); renderTop();
   }
   function renderTop() {
@@ -498,6 +499,8 @@
       <div class="label">Title</div><input class="text" id="tp-title" value="${esc(comp.title)}" maxlength="90">
       <label class="switchrow"><input type="checkbox" id="tp-split" ${split ? "checked" : ""} ${n < 4 ? "disabled" : ""}>
         Split into 2 videos (#${n}–#${top + 1}, then #${top}–#1)</label>
+      <label class="switchrow"><input type="checkbox" id="tp-music" ${comp.music ? "checked" : ""}> 🎵 Quiet background music</label>
+      <label class="switchrow"><input type="checkbox" id="tp-sfx" ${comp.sfx ? "checked" : ""}> 💥 Whoosh between moments</label>
       <div class="note">#1 is where chat jumped most. Play a moment and tap "Here" to set where it starts and ends. ▲▼ change the rank, ✕ leaves it out.</div>
       ${comp.items.map((it, i) => `
         ${split && (i === 0 || i === top) ? `<div class="parthead">${i === 0 ? "Part 2 (posted second)" : "Part 1 (posted first)"}</div>` : ""}
@@ -516,6 +519,8 @@
     $$("[data-n]", view).forEach(b => b.onclick = () => openTop([], +b.dataset.n));
     $("#tp-title").oninput = e => comp.title = e.target.value;
     $("#tp-split").onchange = e => { comp.split = e.target.checked; renderTop(); };
+    $("#tp-music").onchange = e => comp.music = e.target.checked;
+    $("#tp-sfx").onchange = e => comp.sfx = e.target.checked;
     $$(".moment", view).forEach(row => {
       const i = +row.dataset.i, it = comp.items[i], v = $("video", row);
       const set = (k, val) => {
@@ -544,7 +549,8 @@
     const split = comp.split && comp.items.length >= 4, n = comp.items.length;
     let r;
     try { r = await api("/lib/compilation", { items: comp.items.map(it => ({ id: it.id, start: it.start, end: it.end })),
-                                               title: comp.title, split, schedule: false }); }
+                                               title: comp.title, split, schedule: false,
+                                               music: comp.music, sfx: comp.sfx }); }
     catch (e) { return toast(e.message, 5000); }
     picks = [];
     history.back();

@@ -77,6 +77,10 @@ SETTINGS = [
      "auto: streamer's webcam on top, gameplay below, filling the screen. facecam_full: webcam on top, the whole "
      "stream screen below over a blurred background (both use blur when there's no webcam). blur: whole picture over "
      "a blurred background. crop: fills the screen", ["auto", "facecam_full", "blur", "crop"]),
+    ("vertical", "top_music", "Music under Top 10s", "bool",
+     "Very quiet background music. Clipper makes a lo-fi tune itself; songs you put in the \"music\" folder next to "
+     "config.toml are used instead (only use music you're allowed to post)", None),
+    ("vertical", "top_sfx", "Whoosh between Top 10 moments", "bool", "A sound effect into every new number", None),
     ("vertical", "ai_editors", "AI editing team", "bool",
      "5 AI editors: trim to the moment, find the webcam, captions, post texts, and a final review (needs AI captions)", None),
     ("vertical", "ai_captions", "AI captions", "bool", "Claude writes the headline and reaction captions", None),
@@ -607,6 +611,7 @@ class ClipperApp:
         return web.json_response({"items": out, "title": compilation.default_title(n),
                                   "next": schedule.next_slot(self.clips_dir, self.cfg.post.top_times).isoformat(timespec="minutes"),
                                   "gap": self.cfg.post.part_gap,
+                                  "music": self.cfg.vertical.top_music, "sfx": self.cfg.vertical.top_sfx,
                                   "autosubmit": self.cfg.post.autofill and self.cfg.post.autosubmit})
 
     async def compilation(self, request):
@@ -631,6 +636,11 @@ class ClipperApp:
                                                "(it needs at least 2)"}, status=400)
         title = str(body.get("title") or "")
         split = bool(body.get("split"))
+        music = None
+        if body.get("music", self.cfg.vertical.top_music):
+            from .soundtrack import pick_song
+            music = pick_song(Path(self.config_path).resolve().parent / "music") or "made"
+        sfx = bool(body.get("sfx", self.cfg.vertical.top_sfx))
         when = None
         if body.get("schedule"):
             if not (self.cfg.post.autofill and self.cfg.post.autosubmit):
@@ -645,7 +655,8 @@ class ClipperApp:
 
         async def run():
             try:
-                made = await compilation.build(self.clips_dir, items, title, self.cfg.vertical.font, split=split)
+                made = await compilation.build(self.clips_dir, items, title, self.cfg.vertical.font, split=split,
+                                               music=music, sfx=sfx)
                 if when is not None:
                     for k, out in enumerate(made):
                         at = when + timedelta(minutes=gap * k)

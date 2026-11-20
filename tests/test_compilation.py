@@ -93,3 +93,40 @@ def test_schedule_slots_due_and_cancel(tmp_path):
     key = schedule.load(tmp_path)[1]["key"]
     assert schedule.cancel(tmp_path, key) and [i["label"] for i in schedule.pending(tmp_path)] == ["Part 1"]
     assert schedule.parse_times(["9.30", "25:00", "x", "21:00"]) == [(9, 30), (21, 0)]
+
+
+
+def _loudness(path, start, dur):
+    import re as _re
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(start), "-t", str(dur), "-i", str(path), "-vn",
+                        "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
+    return float(_re.search(r"mean_volume: (-?[\d.]+) dB", r.stderr).group(1))
+
+
+def test_music_and_whoosh_under_the_countdown(tmp_path):
+    from clipper import soundtrack
+    clips = [phone_clip(tmp_path, f"S{i}", i, c, rate=30 - i, seconds=10, offset=6)
+             for i, c in enumerate(["red", "blue", "0x00ff00"], 1)]
+    items = [{"clip": c, "start": None, "end": None} for c in clips]
+    silent_title = asyncio.run(comp.build(tmp_path, items, "Top 3 😭"))[0]
+    with_sound = asyncio.run(comp.build(tmp_path, items, "Top 3 😭", music="made", sfx=True))[0]
+    assert abs(probe_video_duration(with_sound) - probe_video_duration(silent_title)) < 0.5
+    # the title card was silent; now the music plays under it, but quietly
+    assert _loudness(silent_title, 0.3, 1.2) < -80
+    quiet = _loudness(with_sound, 0.3, 1.0)
+    assert -60 < quiet < -25, quiet
+    # the whoosh peaks on the cut to #3 (at 2 s): louder there than in the music just before
+    assert _loudness(with_sound, 1.85, 0.3) > quiet + 6
+    # music + whoosh are made, not downloaded
+    loop = soundtrack.make_music(tmp_path / "m.wav", seed=3)
+    assert abs(float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                     str(loop)], capture_output=True, text=True).stdout) - soundtrack.LOOP) < 0.1
+
+
+def test_songs_from_the_music_folder_are_used(tmp_path):
+    from clipper import soundtrack
+    assert soundtrack.pick_song(tmp_path / "music") is None
+    (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "notes.txt").write_text("x")
+    (tmp_path / "music" / "chill.mp3").write_bytes(b"x")
+    assert soundtrack.pick_song(tmp_path / "music").name == "chill.mp3"
